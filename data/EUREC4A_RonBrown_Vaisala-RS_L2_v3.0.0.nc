@@ -1,1 +1,0 @@
-/home/deszoeks/Data/ATOMIC/radiosonde/level2/EUREC4A_RonBrown_Vaisala-RS_L2_v3.0.0.nc

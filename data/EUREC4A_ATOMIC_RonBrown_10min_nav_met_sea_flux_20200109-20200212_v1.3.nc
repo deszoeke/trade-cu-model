@@ -1,1 +1,0 @@
-/home/deszoeks/Data/ATOMIC/flux/EUREC4A_ATOMIC_RonBrown_10min_nav_met_sea_flux_20200109-20200212_v1.3.nc
