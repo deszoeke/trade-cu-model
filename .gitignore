@@ -1,3 +1,5 @@
+Manifest.toml
+
 *.pdf
 *.png
 *.svg
@@ -7,3 +9,4 @@ data
 data/EUREC4A_ATOMIC_RonBrown_10min_nav_met_sea_flux_20200109-20200212_v1.3.nc
 data/EUREC4A_RonBrown_Vaisala-RS_L2_v2.2.0.nc
 data/EUREC4A_RonBrown_Vaisala-RS_L2_v3.0.0.nc
+
