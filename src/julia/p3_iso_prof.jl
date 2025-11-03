@@ -17,21 +17,22 @@ get the indices of y that correspond for each variable x
 so y[index[i]] <= x[i] < y[index[i+1]]
 """
 coarseind(x, y) = [searchsortedlast(y, xi) for xi in x]
-# with type stability and preallocation
-# function coarseind(x, y)
-#    indices = Vector{Int}(undef, length(x))
-#    for i in eachindex(x, indices)
-#        indices[i] = searchsortedlast(y, x[i])
-#    end
-#    return indices
-# end
+#= "with type stability and preallocation"
+function coarseind(x, y)
+   indices = Vector{Int}(undef, length(x))
+   for i in eachindex(x, indices)
+       indices[i] = searchsortedlast(y, x[i])
+   end
+   return indices
+end =#
 
 #url = "https://www.ncei.noaa.gov/thredds-ocean/catalog/psl/atomic/p3/Picarro/catalog.html" # thredds
 #url = "https://www.ncei.noaa.gov/data/oceans/oar/psl/atomic-2020/p3/Picarro/"
 # ds = NCDataset(url)
-p3dir = "../../data/p3/Picarro"
-p3files = readdir( joinpath(p3dir, "EUREC4A_ATOMIC_P3_Isotope-Analyzer_Water-Vapor-Isotope-Ratios-r1Hz_*_v1.1.nc") )
-p3files = readdir( joinpath(p3dir, "Picarro")) |> filter(startswith("EUREC4A_ATOMIC_P3_Isotope-Analyzer_Water-Vapor-Isotope-Ratios-1Hz"))
+p3dir = "../../data/p3"
+p3files = readdir(joinpath(p3dir, "Picarro")) |> filter(startswith("EUREC4A_ATOMIC_P3_Isotope-Analyzer_Water-Vapor-Isotope-Ratios-1Hz"))
+p3h2ofiles = readdir(joinpath(p3dir, "Picarro")) |> filter(startswith("EUREC4A_ATOMIC_P3_Isotope-Analyzer_Water-Vapor-1Hz"))
+p3metfiles = readdir(joinpath(p3dir, "meteorology")) |> filter(startswith("EUREC4A_ATOMIC_P3_Flight-Level"))
 
 #dsi = NCDataset( joinpath(p3dir, p3files[1]) )
 
@@ -66,4 +67,17 @@ function plot_iso_prof( dsi, ii )
     ylabel("height (km)")
     xlabel(L"\delta"*"D "*L"(10^{-3})")
 end
+
+# plot profiles for all flights
+clf()
+fig, ax = subplots(2,1,1)
+for f in joinpath.(p3dir, "Picarro", p3files[1])
+    dsi, ii, t_h = get_iso_ds( f )
+    dstring = match(r"\d{4}\d{2}\d{2}", f).match
+    h2ofile = filter(contains(dstring), p3h2ofiles)[1] # matching water vapor file
+    dsw = NCDataset( h2ofile )
+    plot_iso_prof( dsi, ii )
+end
+xlim([-500, -65])
+ylim([0, 4])
 
