@@ -1,4 +1,5 @@
 using Revise
+using Pkg; Pkg.activate(".")
 
 using NCDatasets
 using PyPlot
@@ -55,6 +56,15 @@ function get_iso_ds( f )
     return dsi, ii, t_h
 end
 
+m2n(x) = replace(x, missing => NaN)
+
+function get_h2o_var_at_iso_times( dsw, varname, dsi, ii,
+        epoch_ms_i = Dates.datetime2epochms.(dsi[:time][:]),
+        epoch_ms_w = Dates.datetime2epochms.(dsw[:time][:]) )
+    itp = linear_interpolation(epoch_ms_w, m2n(dsw[varname][:]))
+    itp( epoch_ms_i[ii] )
+end
+
 function plot_flight_alt( dsi, ii )
     subplot(2,1,1)
     plot(dsi[:lon][ii], dsi[:alt][ii]/1e3)
@@ -68,16 +78,37 @@ function plot_iso_prof( dsi, ii )
     xlabel(L"\delta"*"D "*L"(10^{-3})")
 end
 
+spechum(mixratio) = mixratio / (1+mixratio)
+
+dstring = [ match(r"\d{4}\d{2}\d{2}", f).match for f in joinpath.(p3dir, "Picarro", p3files) ]
+
 # plot profiles for all flights
 clf()
 fig, ax = subplots(2,1,1)
-for f in joinpath.(p3dir, "Picarro", p3files[1])
+for (i,f) in enumerate( joinpath.(p3dir, "Picarro", p3files) )
     dsi, ii, t_h = get_iso_ds( f )
-    dstring = match(r"\d{4}\d{2}\d{2}", f).match
-    h2ofile = filter(contains(dstring), p3h2ofiles)[1] # matching water vapor file
-    dsw = NCDataset( h2ofile )
     plot_iso_prof( dsi, ii )
+
+    # dstring = match(r"\d{4}\d{2}\d{2}", f).match
+    h2ofile = filter(contains(dstring[i]), p3h2ofiles)[1] # matching water vapor file
+    dsw = NCDataset( joinpath(p3dir, "Picarro", h2ofile) )
+    q = spechum.( get_h2o_var_at_iso_times( dsw, :mmr, dsi, ii ).*1e-3 )
+    loglog(q, -dsi[:dD][ii].*q, linestyle="none", marker=".", markersize=0.2)
 end
 xlim([-500, -65])
 ylim([0, 4])
+
+clf()
+for (i,f) in enumerate( joinpath.(p3dir, "Picarro", p3files) )
+    dsi, ii, t_h = get_iso_ds( f )
+    h2ofile = filter(contains(dstring[i]), p3h2ofiles)[1] # matching water vapor file
+    dsw = NCDataset( joinpath(p3dir, "Picarro", h2ofile) )
+    q = spechum.( get_h2o_var_at_iso_times( dsw, :mmr, dsi, ii ).*1e-3 )
+    loglog(q, -dsi[:dD][ii].*q, linestyle="none", marker=".", markersize=0.2)
+end
+#plot([1e-5, 2e-2], (1e-2.*[1e-5, 2e-2]./1e-5).^0.66)
+plot([1e-5, 2e-2], (1e-2.*[1e-5, 2e-2]./1e-5).^0.75)
+plot([1e-5, 2e-2], (1e-2.*[1e-5, 2e-2]./1e-5).^0.6)
+xlabel("specific humidity q")
+ylabel("q*dD "*L"10^{-3}")
 
