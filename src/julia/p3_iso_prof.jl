@@ -196,7 +196,7 @@ for (i,f) in enumerate( joinpath.(p3dir, "Picarro", p3files) )
     icldp = rh .> 97.0
     qi = Rati.(dsi[:dD][ii]) .* q
     R0 = Rati(maximum(skipmissing(dsi[:dD][ii])))
-    print("$(R0), ")
+    # print("$(R0), ")
     semilogx(q, log.(Rati.(dsi[:dD][ii])./R0), linestyle="none", marker=".", markersize=0.2, color="r")
     semilogx(q[icld], log.(Rati.(dsi[:dD][ii[icld]])./R0), linestyle="none", marker=".", markersize=0.2, color="b")
     semilogx(q[icldp], log.(Rati.(dsi[:dD][ii[icldp]])./R0), linestyle="none", marker=".", markersize=0.4, color="c")
@@ -210,7 +210,7 @@ semilogx(qm, log.(Rm/RR[1]), linewidth=0.4, color="k", linestyle="--")#
 xlim([1e-3, 2e-2])
 ylim([-0.13, 0])
 title("deuterium")
-ylabel(L"\ln(R/R_s)\approx\delta")
+ylabel(L"\ln(R/\max(R))\approx\delta-\max(\delta)")
 xlabel("specific humidity (kg kg\$^{-1}\$)")
 tight_layout()
 
