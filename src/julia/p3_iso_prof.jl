@@ -5,6 +5,7 @@ using Dates
 using NCDatasets
 using PyPlot
 using Interpolations
+using StatsBase # fit(Histogram, ) -> bin averages
 
 using PyCall
 # allow for plotting with missing values
@@ -26,6 +27,57 @@ function coarseind(x, y)
    end
    return indices
 end =#
+
+# average R as a function of q
+# # Histogram with mean values
+# h = fit(Histogram, x, xedge; weight=y)
+# bin_mean = h.weights ./ fit(Histogram, x, xedge).weights
+"""
+    bin_mean, bin_std, bin_sum, bin_sum2, bin_count = binmean(x, y, xedge)
+
+Average y values within bins defined by xedge (single pass, no sorting).
+
+# Arguments
+- `x, y`: data arrays
+- `xedge`: bin edges (length nbins+1), defines bins [xedge[i], xedge[i+1])
+
+# Returns
+- `bin_mean`: mean y value in each bin (NaN for empty bins)
+- `bin_std`: standard deviation of y in each bin (NaN for empty bins)
+- `bin_sum`: sum of centered y values (y - y[1]) in each bin
+- `bin_sum2`: sum of squared centered y values in each bin
+- `bin_count`: count of points in each bin
+"""
+function binmean(x, y, xedge)
+    nbins = length(xedge) - 1
+    bin_sum  = zeros(nbins)
+    bin_sum2 = zeros(nbins)
+    bin_std  = zeros(nbins)
+    bin_count = zeros(Int, nbins)
+    y1 = y[1]
+    
+    # loop through data
+    for i in eachindex(x)
+        # Binary search to find bin index
+        ib = searchsortedlast(xedge, x[i]) - 1
+        # Accumulate if within valid range, otherwise ignore
+        if ib >= 1 && ib <= nbins
+            dy = y[i] - y1
+            bin_sum[ib] += dy
+            bin_sum2[ib] += dy^2
+            bin_count[ib] += 1
+        end
+    end
+    
+    # Compute bin stats
+    ctrmean = bin_sum ./ bin_count 
+    bin_mean = ctrmean .+ y1
+    bin_std  = sqrt.(max.(0, bin_sum2 ./ bin_count .- ctrmean.^2))
+    bin_mean[bin_count .< 1] .= NaN  # for empty bins
+    bin_std[bin_count .< 1] .= NaN
+
+    return bin_mean, bin_std, bin_sum, bin_sum2, bin_count
+end
 
 #url = "https://www.ncei.noaa.gov/thredds-ocean/catalog/psl/atomic/p3/Picarro/catalog.html" # thredds
 #url = "https://www.ncei.noaa.gov/data/oceans/oar/psl/atomic-2020/p3/Picarro/"
@@ -215,3 +267,21 @@ xlabel("specific humidity (kg kg\$^{-1}\$)")
 tight_layout()
 
 [ savefig("P3_RDoR0_vs_q.$(f)") for f in fmts ]
+
+# average in bins of q
+qedge = 10.^(-6:0.01:1.7) # geometrically spaced bins
+nbin = length(qedge)-1
+sumbin   = zeros(nbin)
+countbin = zeros(nbin)
+for (i,f) in enumerate( joinpath.(p3dir, "Picarro", p3files) )
+    dsi, ii, t_h = get_iso_ds( f )
+    h2ofile = filter(contains(dstring[i]), p3h2ofiles)[1] # matching water vapor file
+    dsw = NCDataset( joinpath(p3dir, "Picarro", h2ofile) )
+    q  = spechum.( get_h2o_var_at_iso_times( dsw, :mmr, dsi, ii ).*1e-3 )
+    rh =           get_h2o_var_at_iso_times( dsw, :rh_iso, dsi, ii )
+    mb, sb, cb = binmean( q, dsi[:dD][ii], qedge )
+    sumbin += sb
+    countbin += cb
+end
+dD_q = sumbin ./ countbin
+dD_q[countbin<1] = NaN
