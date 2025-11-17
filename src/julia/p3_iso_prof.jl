@@ -1,9 +1,11 @@
 using Revise
 using Pkg; Pkg.activate(".")
 
+using Dates
 using NCDatasets
 using PyPlot
 using Interpolations
+using StatsBase # fit(Histogram, ) -> bin averages
 
 using PyCall
 # allow for plotting with missing values
@@ -11,7 +13,6 @@ function PyCall.PyObject(a::Array{Union{T,Missing},N}) where {T,N}
     numpy_ma = PyCall.pyimport("numpy").ma
     pycall(numpy_ma.array, Any, coalesce.(a,zero(T)), mask=ismissing.(a))
 end
-
 
 """
 get the indices of y that correspond for each variable x
@@ -26,6 +27,57 @@ function coarseind(x, y)
    end
    return indices
 end =#
+
+# average R as a function of q
+# # Histogram with mean values
+# h = fit(Histogram, x, xedge; weight=y)
+# bin_mean = h.weights ./ fit(Histogram, x, xedge).weights
+"""
+    bin_mean, bin_std, bin_sum, bin_sum2, bin_count = binmean(x, y, xedge)
+
+Average y values within bins defined by xedge (single pass, no sorting).
+
+# Arguments
+- `x, y`: data arrays
+- `xedge`: bin edges (length nbins+1), defines bins [xedge[i], xedge[i+1])
+
+# Returns
+- `bin_mean`: mean y value in each bin (NaN for empty bins)
+- `bin_std`: standard deviation of y in each bin (NaN for empty bins)
+- `bin_sum`: sum of centered y values (y - y[1]) in each bin
+- `bin_sum2`: sum of squared centered y values in each bin
+- `bin_count`: count of points in each bin
+"""
+function binmean(x, y, xedge)
+    nbins = length(xedge) - 1
+    bin_sum  = zeros(nbins)
+    bin_sum2 = zeros(nbins)
+    bin_std  = zeros(nbins)
+    bin_count = zeros(Int, nbins)
+    y1 = y[1]
+    
+    # loop through data
+    for i in eachindex(x)
+        # Binary search to find bin index
+        ib = searchsortedlast(xedge, x[i]) - 1
+        # Accumulate if within valid range, otherwise ignore
+        if ib >= 1 && ib <= nbins
+            dy = y[i] - y1
+            bin_sum[ib] += dy
+            bin_sum2[ib] += dy^2
+            bin_count[ib] += 1
+        end
+    end
+    
+    # Compute bin stats
+    ctrmean = bin_sum ./ bin_count 
+    bin_mean = ctrmean .+ y1
+    bin_std  = sqrt.(max.(0, bin_sum2 ./ bin_count .- ctrmean.^2))
+    bin_mean[bin_count .< 1] .= NaN  # for empty bins
+    bin_std[bin_count .< 1] .= NaN
+
+    return bin_mean, bin_std, bin_sum, bin_sum2, bin_count
+end
 
 #url = "https://www.ncei.noaa.gov/thredds-ocean/catalog/psl/atomic/p3/Picarro/catalog.html" # thredds
 #url = "https://www.ncei.noaa.gov/data/oceans/oar/psl/atomic-2020/p3/Picarro/"
@@ -79,41 +131,157 @@ function plot_iso_prof( dsi, ii )
 end
 
 spechum(mixratio) = mixratio / (1+mixratio)
+const RDvsmow = 155.76e-6     # unitless, deuterium
+const R18Ovsmow = 2005.2e-6   # unitless, oxygen-18
+delt(R, Rvsmow=RDvsmow) = 1e3*(R/Rvsmow - 1)     # permil
+Rati(d, Rvsmow=RDvsmow) = Rvsmow * (1 + d*1e-3); # d in permil
+alphae_d(T) = exp( 1158.8e-12 .*T.^3 - 1620.1e-9 .*T.^2 + 794.84e-6 .*T - 161.04e-3 + 2.9992e6./T.^3 )
+
+"mixing line"
+#mix(a, x0, x1) = a.*x1 + (1-a).*x0
+function mix(x0,y0, x1,y1, n::Integer=20)
+    a = (0:n)./n
+    x = a.*x1 .+ (1.0 .-a).*x0
+    y = a.*y1 .+ (1.0 .-a).*y0
+    return x,y
+end
+
+"Rayleigh model isotope ratio R"
+function Rayleigh(T=305.0:-5.0:220.0, R0=1.5e-4, q0=2e-2,
+        RR=similar(T), q=similar(T) )
+    Cpv = 1870.0 # J/kg/K
+    Cw  = 4190.0
+    Cp  = 1005.
+    Rd  = 287.0
+    C   = 273.15
+    L0  = 2.501e6
+    Rv  = 461.0
+    "Lv(T) [J/kg] Latent heat of vaporization of water as a function of temperature [K]"
+    Lv(T) = L0 + (Cpv-Cw) * (T-C)
+
+    RR[1] = R0
+    q[ 1] = q0
+    for i in eachindex(RR[1:end-1])
+        dlnT = log( T[i+1] / T[i] )
+        dlnq = ( Lv(T[i])/(Rv*T[i]) + Cp/Rd ) * dlnT
+        dlnR = ( alphae_d(T[i])-1 ) * dlnq
+        RR[i+1] = RR[i] * exp(dlnR)
+        q[i+1]  = q[i]  * exp(dlnq)
+    end
+    return RR, q # Rayleigh isotope ratio, specific humidity
+end
+RR, qR = Rayleigh()
 
 dstring = [ match(r"\d{4}\d{2}\d{2}", f).match for f in joinpath.(p3dir, "Picarro", p3files) ]
 
 # plot profiles for all flights
 clf()
-fig, ax = subplots(2,1,1)
 for (i,f) in enumerate( joinpath.(p3dir, "Picarro", p3files) )
     dsi, ii, t_h = get_iso_ds( f )
     plot_iso_prof( dsi, ii )
-
-    # dstring = match(r"\d{4}\d{2}\d{2}", f).match
-    h2ofile = filter(contains(dstring[i]), p3h2ofiles)[1] # matching water vapor file
-    dsw = NCDataset( joinpath(p3dir, "Picarro", h2ofile) )
-    q = spechum.( get_h2o_var_at_iso_times( dsw, :mmr, dsi, ii ).*1e-3 )
-    loglog(q, -dsi[:dD][ii].*q, linestyle="none", marker=".", markersize=0.2)
 end
 xlim([-500, -65])
 ylim([0, 4])
 
+# loglog plot q*dD vs q for all flights
 clf()
 for (i,f) in enumerate( joinpath.(p3dir, "Picarro", p3files) )
     dsi, ii, t_h = get_iso_ds( f )
     h2ofile = filter(contains(dstring[i]), p3h2ofiles)[1] # matching water vapor file
     dsw = NCDataset( joinpath(p3dir, "Picarro", h2ofile) )
-    q = spechum.( get_h2o_var_at_iso_times( dsw, :mmr, dsi, ii ).*1e-3 )
-    loglog(q, -dsi[:dD][ii].*q, linestyle="none", marker=".", markersize=0.2)
+    q  = spechum.( get_h2o_var_at_iso_times( dsw, :mmr, dsi, ii ).*1e-3 )
+    rh =           get_h2o_var_at_iso_times( dsw, :rh_iso, dsi, ii )
+    loglog(q, -dsi[:dD][ii].*q, linestyle="none", marker=".", markersize=0.2) # weird
 end
-#plot([1e-5, 2e-2], (1e-2.*[1e-5, 2e-2]./1e-5).^0.66)
 plot([1e-5, 2e-2], (5e-3.*[1e-5, 2e-2]./1e-5).^0.8 , color="k", linewidth=0.3)
 plot([1e-5, 2e-2], (7e-4.*[1e-5, 2e-2]./1e-5).^0.8 , color="k", linewidth=0.3)
 plot([1e-5, 2e-2], (5e-3.*[1e-5, 2e-2]./1e-5).^0.6 , color="k", linewidth=0.3)
-plot(6e-3+[0,0], [2e-1, 4e-1], color="k", linewidth=0.3)
+plot(6e-3.+[0,0], [2e-1, 4e-1], color="k", linewidth=0.3)
 text(7e-3, 2e-1, "trade cumulus")
 xlabel("specific humidity q")
 ylabel("q*dD "*L"10^{-3}")
 
 ylim([0.1, 6.5])
 xlim([1e-3, 2e-2])
+
+# loglog plot qi vs q for all flights
+clf()
+for (i,f) in enumerate( joinpath.(p3dir, "Picarro", p3files) )
+    dsi, ii, t_h = get_iso_ds( f )
+    h2ofile = filter(contains(dstring[i]), p3h2ofiles)[1] # matching water vapor file
+    dsw = NCDataset( joinpath(p3dir, "Picarro", h2ofile) )
+    q = spechum.( get_h2o_var_at_iso_times( dsw, :mmr, dsi, ii ).*1e-3 )
+    rh =          get_h2o_var_at_iso_times( dsw, :rh_iso, dsi, ii )
+    icld = rh .> 90.0
+    icldp = rh .> 97.0
+    qi = Rati.(dsi[:dD][ii]) .* q
+    semilogx(q, log.(Rati.(dsi[:dD][ii])./RDvsmow), linestyle="none", marker=".", markersize=0.2, color="r")
+    semilogx(q[icld], log.(Rati.(dsi[:dD][ii[icld]])./RDvsmow), linestyle="none", marker=".", markersize=0.2, color="b")
+    semilogx(q[icldp], log.(Rati.(dsi[:dD][ii[icldp]])./RDvsmow), linestyle="none", marker=".", markersize=0.4, color="c")
+end
+semilogx(qR, log.(1.08*RR/RDvsmow), linewidth=0.4, color="k") # ~ +80 permil
+semilogx(qR, log.(0.97*RR/RDvsmow), linewidth=0.4, color="k") # ~ -30 permil
+qm,Rm = mix(qR[1],0.97*RR[1], qR[6], 1.08*RR[6])
+semilogx(qm, log.(Rm/RDvsmow), linewidth=0.4, color="k", linestyle="--")# 
+qm,Rm = mix(qR[5],0.97*RR[5], qR[8], 1.08*RR[8])
+semilogx(qm, log.(Rm/RDvsmow), linewidth=0.4, color="k", linestyle="--")# 
+xlim([9e-4, 2e-2])
+ylim([-0.25, 0])
+title("deuterium")
+ylabel(L"\ln(R/R_s)\approx\delta")
+xlabel("specific humidity (kg kg\$^{-1}\$)")
+tight_layout()
+
+fmts = ["png", "pdf", "eps", "svg"]
+[ savefig("P3_RD_vs_q.$(f)") for f in fmts ]
+
+# Normalize each profile by a maximum R0, rather than RDvsmow
+# to collapse profiles.
+clf()
+for (i,f) in enumerate( joinpath.(p3dir, "Picarro", p3files) )
+    dsi, ii, t_h = get_iso_ds( f )
+    h2ofile = filter(contains(dstring[i]), p3h2ofiles)[1] # matching water vapor file
+    dsw = NCDataset( joinpath(p3dir, "Picarro", h2ofile) )
+    q = spechum.( get_h2o_var_at_iso_times( dsw, :mmr, dsi, ii ).*1e-3 )
+    rh =          get_h2o_var_at_iso_times( dsw, :rh_iso, dsi, ii )
+    icld = rh .> 90.0
+    icldp = rh .> 97.0
+    qi = Rati.(dsi[:dD][ii]) .* q
+    R0 = Rati(maximum(skipmissing(dsi[:dD][ii])))
+    # print("$(R0), ")
+    semilogx(q, log.(Rati.(dsi[:dD][ii])./R0), linestyle="none", marker=".", markersize=0.2, color="r")
+    semilogx(q[icld], log.(Rati.(dsi[:dD][ii[icld]])./R0), linestyle="none", marker=".", markersize=0.2, color="b")
+    semilogx(q[icldp], log.(Rati.(dsi[:dD][ii[icldp]])./R0), linestyle="none", marker=".", markersize=0.4, color="c")
+end
+semilogx(qR, log.(1.12*RR/RR[1]), linewidth=0.4, color="k") # ~ +80 permil
+semilogx(qR, log.(RR/RR[1]), linewidth=0.4, color="k") # ~ -30 permil
+qm,Rm = mix(qR[1],RR[1], qR[6], 1.12*RR[6])
+semilogx(qm, log.(Rm/RR[1]), linewidth=0.4, color="k", linestyle="--")#
+qm,Rm = mix(qR[5],RR[5], qR[8], 1.12*RR[8])
+semilogx(qm, log.(Rm/RR[1]), linewidth=0.4, color="k", linestyle="--")#
+xlim([1e-3, 2e-2])
+ylim([-0.13, 0])
+title("deuterium")
+ylabel(L"\ln(R/\max(R))\approx\delta-\max(\delta)")
+xlabel("specific humidity (kg kg\$^{-1}\$)")
+tight_layout()
+
+[ savefig("P3_RDoR0_vs_q.$(f)") for f in fmts ]
+
+# average in bins of q
+qedge = 10.^(-6:0.01:1.7) # geometrically spaced bins
+nbin = length(qedge)-1
+sumbin   = zeros(nbin)
+countbin = zeros(nbin)
+for (i,f) in enumerate( joinpath.(p3dir, "Picarro", p3files) )
+    dsi, ii, t_h = get_iso_ds( f )
+    h2ofile = filter(contains(dstring[i]), p3h2ofiles)[1] # matching water vapor file
+    dsw = NCDataset( joinpath(p3dir, "Picarro", h2ofile) )
+    q  = spechum.( get_h2o_var_at_iso_times( dsw, :mmr, dsi, ii ).*1e-3 )
+    rh =           get_h2o_var_at_iso_times( dsw, :rh_iso, dsi, ii )
+    mb, sb, cb = binmean( q, dsi[:dD][ii], qedge )
+    sumbin += sb
+    countbin += cb
+end
+dD_q = sumbin ./ countbin
+dD_q[countbin<1] = NaN
