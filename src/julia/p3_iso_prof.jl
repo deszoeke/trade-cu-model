@@ -269,7 +269,7 @@ tight_layout()
 [ savefig("P3_RDoR0_vs_q.$(f)") for f in fmts ]
 
 # average in bins of q
-qedge = 10.^(-6:0.01:1.7) # geometrically spaced bins
+qedge = 10.0.^(-6:0.01:1.7) # geometrically spaced bins
 nbin = length(qedge)-1
 sumbin   = zeros(nbin)
 countbin = zeros(nbin)
