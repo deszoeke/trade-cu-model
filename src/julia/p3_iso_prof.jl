@@ -205,6 +205,7 @@ ylim([0.1, 6.5])
 xlim([1e-3, 2e-2])
 
 # loglog plot qi vs q for all flights
+# log(R/Rs) approx R/Rs-1 = delta
 clf()
 for (i,f) in enumerate( joinpath.(p3dir, "Picarro", p3files) )
     dsi, ii, t_h = get_iso_ds( f )
