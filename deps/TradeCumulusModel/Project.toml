@@ -1,0 +1,4 @@
+name = "TradeCumulusModel"
+uuid = "17077f46-583d-4139-875f-de4e81509608"
+version = "0.1.0"
+authors = ["Simon de Szoeke <simon.deszoeke@oregonstate.edu>"]

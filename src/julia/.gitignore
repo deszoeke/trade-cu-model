@@ -1,1 +1,8 @@
 Manifest.toml
+
+# Keep conda clean:
+.CondaPkg
+__pycache__/
+*.pyc
+*.so *.dll *.dylib
+.JuliaFormatter.toml

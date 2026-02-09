@@ -1,0 +1,10 @@
+name = "VaporSat"
+uuid = "72bc5b72-20d4-449a-8563-af080d1eae85"
+version = "0.1.0"
+authors = ["Simon de Szoeke <simon.deszoeke@oregonstate.edu>"]
+
+[deps]
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+
+[compat]
+ForwardDiff = "1.3.2"
