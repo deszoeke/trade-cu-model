@@ -12,3 +12,10 @@ data/EUREC4A_RonBrown_Vaisala-RS_L2_v2.2.0.nc
 data/EUREC4A_RonBrown_Vaisala-RS_L2_v3.0.0.nc
 
 src/julia/tradeCu_clouds_flux.nc
+
+# Keep conda clean:
+.CondaPkg/
+__pycache__/
+*.pyc
+*.so *.dll *.dylib
+.JuliaFormatter.toml
