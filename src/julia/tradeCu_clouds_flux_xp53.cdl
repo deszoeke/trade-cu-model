@@ -1,0 +1,55 @@
+netcdf tradeCu_clouds_flux_xp53 {
+dimensions:
+	height = 500 ;
+	precip_efficiency = 500 ;
+	total_sink_rate = 600 ;
+
+variables:
+	float height(height) ;
+		height:units = "m" ;
+		height:long_name = "height above sea level" ;
+		height:description = "vertical coordinate" ;
+		
+	float total_sink_rate(total_sink_rate) ;
+		total_sink_rate:units = "1/km" ;
+		total_sink_rate:description = "total sink rate from cloud per unit height" ;
+		total_sink_rate:equation = "autoconversion + entrainment" ;
+		
+        float cloud_top_height(total_sink_rate) ;
+                cloud_top_height:units = "m" ;
+
+	float flux_cloud(height, total_sink_rate) ;
+		flux_cloud:units = "kg/kg m/s" ;
+		flux_cloud:long_name = "cloud moisture flux" ;
+		
+	float flux_eddy(height, total_sink_rate) ;
+		flux_eddy:units = "kg/kg m/s" ;
+		flux_eddy:long_name = "total eddy moisture flux" ;
+		flux_eddy:equation = "flux_eddy = flux_cloud + flux_precip" ;
+		
+	float flux_precip(height, total_sink_rate) ;
+		flux_precip:units = "kg/kg m/s" ;
+		flux_precip:long_name = "precipitation moisture flux" ;
+		
+	float q_total_cloud(height, total_sink_rate) ;
+		flux_cloud:units = "kg/kg" ;
+		flux_cloud:long_name = "cloud updraft total specific humidity" ;
+	
+	float q_env(height) ;
+		flux_cloud:units = "kg/kg" ;
+		flux_cloud:long_name = "mean specific humidity of environment" ;
+	
+	float q_sat_env(height) ;
+		flux_cloud:units = "kg/kg" ;
+		flux_cloud:long_name = "mean saturation specific humidity of environment" ;
+
+	float vert_vel(height, total_sink_rate) ;
+		vert_vel:units = "m/s" ;
+		vert_vel:long_name = "mean vertical velocity in cloud" ;
+	
+
+// global attributes:
+		:title = "shallow cumulus cloud, moisture flux, and vertical velocity data" ;
+		:source = "EUREC4A-ATOMIC shallow cumulus semidiagnostic model, Simon de Szoeke, 2026" ;
+		:precip_efficiency = 0.53 ;
+}
