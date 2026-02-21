@@ -1,7 +1,6 @@
 netcdf tradeCu_clouds_flux_xp53 {
 dimensions:
 	height = 500 ;
-	precip_efficiency = 500 ;
 	total_sink_rate = 600 ;
 
 variables:
