@@ -16,35 +16,51 @@ variables:
 		
         float cloud_top_height(total_sink_rate) ;
                 cloud_top_height:units = "m" ;
+		cloud_top_height:_FillValue = -99999.0f ;
+		cloud_top_height:missing_value = -99999.0f ;
 
 	float flux_cloud(height, total_sink_rate) ;
 		flux_cloud:units = "kg/kg m/s" ;
 		flux_cloud:long_name = "cloud moisture flux" ;
+		flux_cloud:_FillValue = -99999.0f ;
+		flux_cloud:missing_value = -99999.0f ;
 		
 	float flux_eddy(height, total_sink_rate) ;
 		flux_eddy:units = "kg/kg m/s" ;
 		flux_eddy:long_name = "total eddy moisture flux" ;
 		flux_eddy:equation = "flux_eddy = flux_cloud + flux_precip" ;
-		
+		flux_eddy:_FillValue = -99999.0f ;
+		flux_eddy:missing_value = -99999.0f ;
+
 	float flux_precip(height, total_sink_rate) ;
 		flux_precip:units = "kg/kg m/s" ;
 		flux_precip:long_name = "precipitation moisture flux" ;
+		flux_precip:_FillValue = -99999.0f ;
+		flux_precip:missing_value = -99999.0f ;
 		
 	float q_total_cloud(height, total_sink_rate) ;
 		flux_cloud:units = "kg/kg" ;
 		flux_cloud:long_name = "cloud updraft total specific humidity" ;
+		flux_cloud:_FillValue = -99999.0f ;
+		flux_cloud:missing_value = -99999.0f ;
 	
 	float q_env(height) ;
-		flux_cloud:units = "kg/kg" ;
-		flux_cloud:long_name = "mean specific humidity of environment" ;
+		q_env:units = "kg/kg" ;
+		q_env:long_name = "mean specific humidity of environment" ;
+		q_env:_FillValue = -99999.0f ;
+		q_env:missing_value = -99999.0f ;
 	
 	float q_sat_env(height) ;
-		flux_cloud:units = "kg/kg" ;
-		flux_cloud:long_name = "mean saturation specific humidity of environment" ;
+		q_sat_env:units = "kg/kg" ;
+		q_sat_env:long_name = "mean saturation specific humidity of environment" ;
+		q_sat_env:_FillValue = -99999.0f ;
+		q_sat_env:missing_value = -99999.0f ;
 
 	float vert_vel(height, total_sink_rate) ;
 		vert_vel:units = "m/s" ;
 		vert_vel:long_name = "mean vertical velocity in cloud" ;
+		vert_vel:_FillValue = -99999.0f ;
+		vert_vel:missing_value = -99999.0f ;
 	
 
 // global attributes:
