@@ -36,3 +36,13 @@ A critical point is at $\alpha = a_{up}$. This is not impossible since both are 
 I think that $\gamma$ and $\alpha$ should vary with the size $r$ of the averaging domain. The smaller the averaging area, the stronger the compensating subsidence. This effect also reduces the subsidence away from the clouds. 
 
 If the linear scaling factor is a good model, then it's as if all the clouds are fluxing the moisture up with less total mass flux. This might represent some small inner-cloud process. For example, if turbulent updrafts and downdrafts transport moisture against the mean gradient, then these carry some of the moisture flux, reducing the need for bulk mass flux in the plume. It would be an interesting story if only ~1/10 of the plume mass flux were sufficient to make fluxes to balance the moisture budget of the free troposphere.
+
+Our cloud base $M_{GOES}$ agrees with $M_{Vogel}$. Regardless of the source, $w_{up}$ from $M$ is ~20x stronger than JOANNE $W$ at cloud base.
+Vogel et al. (2022) explain this in the SBL mass budget through the turbulent entrainment $E$, which is explicitly calculated with a gneeralized Deardorff surface buoyancy flux closure.
+$E$ and $M$ nearly balance in the mean and in their variability, so that mean velocity $W$ is weakly correlated to $M$.
+Whether $W$ pushes cloud $M$ or $M$ pushes mean $W$, we find 
+$W = \alpha w_{up} = \alpha M/a_{up}$, 
+with 
+$\alpha \approx 0.02$.
+Patrick is computing this with total least squares regression, to find $\alpha$ from the slope of the major axis of variability of $W$ and $w_{up}$, or equivalently from their corresponding divergences.
+
