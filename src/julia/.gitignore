@@ -6,3 +6,6 @@ __pycache__/
 *.pyc
 *.so *.dll *.dylib
 .JuliaFormatter.toml
+
+# contains absolute paths for loading the julia working env:
+.vscode
