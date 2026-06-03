@@ -47,3 +47,95 @@ Differentiating between one climate and another,
 $$
 d\ln \mu + d\ln(\partial q / \partial z) = d\ln F_{LS}.
 $$
+
+## Water diffusion equation for the shallow cumulus region
+If we write the flux as a diffusion then the Eulerian moisture equation, which balances in a mean climate,
+$$
+0 = \frac{\partial q}{\partial t} = 
+    \frac{\partial}{\partial z} \left ( \mu \frac{\partial q}{\partial z} \right )
+    -W \frac{\partial q}{\partial z}
+    -V_H \cdot \nabla q,
+$$
+can be written as a linear operator of the vertical moisture gradient
+(using $d(\mu dq) = d\mu dq + \mu d^2q = (d\mu d + \mu d^2)q $)
+$$
+0 =
+\left ( \frac{\partial \mu}{\partial z  }\frac{\partial}{\partial z} + 
+  \mu \frac{\partial^2  }{\partial z^2} 
+  - W   \frac{\partial}{\partial z}
+  - V_H \cdot \nabla   \right ) q = \mathcal{L_0} q
+$$
+Note the advection source $-V_H \cdot \nabla q < 0$ dries the cumulus layer. Writing this as a downstream moistening (of the total derivative) on the left hand side.
+$$
+V_H \cdot \nabla q =
+\left ( \frac{\partial \mu}{\partial z}
++ (\mu\frac{\partial}{\partial z} - W) \right ) 
+\frac{\partial q}{\partial z} =
+\mathcal{L} \frac{\partial q}{\partial z}
+$$
+The small moistening downstream towards the deep convective region is balanced by the linear operator
+$
+\mathcal{L} = ( \frac{\partial \mu}{\partial z} + (\mu\frac{\partial}{\partial z} - W)  )
+$
+on the vertical moisture gradient.
+Under climate change, the downstream moistening, 
+the linear operator, and the vertical moisture gradient 
+$\partial q/\partial z$ all change.
+
+Take $x$ to be the streamwise horizontal direction of the mean flow $U = V_H$ so that the advection is $U\frac{\partial q}{\partial x}$. For this mean circulation 
+$$
+\frac{\partial U}{\partial x} = -\frac{\partial W}{\partial z}.
+$$
+
+Differentiating from one climate to another, we have
+$$
+0 = d(\mathcal{L}_0 q) = d\mathcal{L}_0 q + \mathcal{L}_0 dq.
+$$
+where
+$$
+\mathcal{L}_0 = \frac{\partial \mu}{\partial z  }\frac{\partial}{\partial z} + 
+  \mu \frac{\partial^2  }{\partial z^2} 
+  - W   \frac{\partial}{\partial z}
+  - V_H \cdot \nabla
+$$
+Differentiating the linear operator,
+$$
+d\mathcal{L}_0 = d(\frac{\partial \mu}{\partial z  }\frac{\partial}{\partial z}) + 
+ d(\mu \frac{\partial^2  }{\partial z^2})
+  - d(W   \frac{\partial}{\partial z})
+  - d(V_H \cdot \nabla )
+= \frac{\partial d\mu}{\partial z  }\frac{\partial}{\partial z}
+  +      \frac{\partial \mu}{\partial z  }\frac{\partial}{\partial z}d 
+  + d\mu \frac{\partial^2  }{\partial z^2} 
+  +  \mu \frac{\partial^2  }{\partial z^2}
+  - dW   \frac{\partial}{\partial z}
+  -  W   \frac{\partial}{\partial z}
+  - dV_H \cdot \nabla
+  -  V_H \cdot \nabla
+$$
+and grouping by operator parameter changes $d\mu$, $dW$, and $dV_H$
+apart from humidity changes $dq$,
+$$
+d\mathcal{L}_0 = 
+         \frac{\partial d\mu}{\partial z  }\frac{\partial}{\partial z}
+  + d\mu \frac{\partial^2  }{\partial z^2} 
+  - dW   \frac{\partial}{\partial z}
+  - dV_H \cdot \nabla
+  +  \left ( \frac{\partial \mu}{\partial z  }\frac{\partial}{\partial z}
+      +  \mu \frac{\partial^2  }{\partial z^2}
+      -    W \frac{\partial}{\partial z}
+      -  V_H \cdot \nabla \right ).
+$$
+So
+$$
+d(\mathcal{L}_0 q) =
+  \left (\frac{\partial d\mu}{\partial z  }\frac{\partial}{\partial z}
+  + d\mu \frac{\partial^2  }{\partial z^2} 
+  - dW   \frac{\partial}{\partial z}
+  - dV_H \cdot \nabla \right ) q
+  + \left ( \frac{\partial \mu}{\partial z  }\frac{\partial}{\partial z}
+      +  \mu \frac{\partial^2  }{\partial z^2}
+      -  W \frac{\partial}{\partial z}
+      -  V_H \cdot \nabla \right ) dq.
+$$
+
