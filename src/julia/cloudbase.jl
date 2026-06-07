@@ -15,6 +15,7 @@ includet("TradeCuModel.jl")
 using .TradeCuModel
 
 using NaNStatistics
+using Missings
 
 # parameters and initialization
 KelvinCelsius=273.15 # K
@@ -41,8 +42,15 @@ icb = findfirst(z .>= zcb) # cloud base index
 
 # standard deviation among soundings
 ds = get_sounding_dataset()
-qstd = tstd(ds[:q][:,:])
-
+qdata = ds[:q][:,:]
+qstd = tstd(qdata)
+qstdsubcloud = Vector{eltype(qdata)}(undef, size(qdata,2))
+for i in 1:size(qdata,2)
+    qstdsubcloud[i] = std(skipmissing(qdata[1:icb,i]))
+end
+# 0.44 g/kg -- much smaller than the mean subcloud q difference of 1.5 g/kg
+# subcloud vertical difference of Dq 1.5 g/kg, but standard deviation is 0.44 g/kg.
+# while std among soundings is 0.99 g/kg.
 # get An-Yi's aggregated GOES cloud fraction vs height data
 rfv_nrm, rfv_acc, cth_bin = NCDataset("../../data/goes16_binned_low4km_20200115_20200219.nc") do dsa
     rfv_nrm = mean(dsa[:rfv_nrm][:,:], dims=2)
