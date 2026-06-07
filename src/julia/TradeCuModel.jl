@@ -29,7 +29,8 @@ export precipflux_down!, precipflux_down, precipflux_down_sfc
 export calcF2
 export cloudflux_1x
 export updraft_w_dq
-export tmean, get_mean_soundings
+export tmean, tstd
+export get_sounding_dataset, get_mean_soundings
 export virtual_temp, calc_rhoL
 # export largescale_drying
 
@@ -237,6 +238,8 @@ end
 
 tmean(var::Symbol, ds=get_sounding_dataset()) = tmean(ds[var][:,:])
 tmean(var::String, ds=get_sounding_dataset()) = tmean(ds[var][:,:])
+tstd(var::Symbol, ds=get_sounding_dataset()) = tstd(ds[var][:,:])
+tstd(var::String, ds=get_sounding_dataset()) = tstd(ds[var][:,:])
 
 function tmean(data::AbstractArray)
     # Preallocate the result matrix with the correct element type excluding Missing
@@ -247,6 +250,19 @@ function tmean(data::AbstractArray)
     # Loop over rows efficiently using @view
     @inbounds for i in 1:rows
         result[i] = mean(skipmissing(@view data[i, :]))
+    end
+    return result
+end
+
+function tstd(data::AbstractArray)
+    # Preallocate the result matrix with the correct element type excluding Missing
+    T = nonmissingtype(eltype(data)) 
+    rows = size(data, 1)
+    result = Vector{T}(undef, rows)
+    
+    # Loop over rows efficiently using @view
+    @inbounds for i in 1:rows
+        result[i] = std(skipmissing(@view data[i, :]))
     end
     return result
 end
