@@ -31,7 +31,7 @@ export cloudflux_1x
 export updraft_w_dq
 export tmean, tstd
 export get_sounding_dataset, get_mean_soundings
-export virtual_temp, calc_rhoL
+export virtual_temp, calc_rhoL, Lv, LvK
 # export largescale_drying
 
 # utility functions; extend matplotlib
@@ -198,8 +198,7 @@ Tlcl(T, ev) = 2840. / (3.5*log(T) - log( 0.01*ev ) - 4.805) + 55.
 lapse_ad = gravity/Cp
 
 "moist adiabatic lapse rate p[Pa], T[K]"
-lapse_moist(T,p) = lapse_ad * (1 + Lv(T)*qsat(p,T-KelvinCelsius)/(Rd*T)) / (1 + Lv(T)^2*Rd/Rv*qsat(p,T-KelvinCelsius)/(Rd*Cp*T*T))
-# lapse_moist(T,p) = lapse_ad * (1 + Lv(T)*qsat(T-273.0,p)/(Rd*T)) / (1 + Lv(T)^2*Rd/Rv*qsat(T-273.0,p)/(Rd*Cp*T*T))
+lapse_moist(T,p) = lapse_ad * (1 + LvK(T)*qsat(p,T-KelvinCelsius)/(Rd*T)) / (1 + Lv(T)^2*Rd/Rv*qsat(p,T-KelvinCelsius)/(Rd*Cp*T*T))
 
 "parcel process adiabatic change in saturation vapor pressure, p[Pa], T[K]"
 dqsatdz_moistad(p,T) = dqsdT(p,T-KelvinCelsius) * -lapse_moist(T,p) # negative
@@ -210,7 +209,8 @@ dqsatdz_moistad(p,T) = dqsdT(p,T-KelvinCelsius) * -lapse_moist(T,p) # negative
 liqldfac(ql; rhoa_o_rhoL=0.001) = 1 - (1 - rhoa_o_rhoL) * ql
 Tliqld(Tv, ql; p=1e5, rhoa=p/(Rd*Tv)) = Tv * liqldfac(ql; rhoa_o_rhoL=rhoa/1000.0)
 
-calc_rhoL(Tmean, pmean) = pmean/(Rd*Tmean) * Lv(Tmean)
+calc_rho( T, p) = p/(Rd*T)
+calc_rhoL(T, p) = p/(Rd*T) * LvK(T) # should use Tv in p/(Rd*T) but T in LvK
 # Tmean = mean(skipnan(tmean(:ta)[ds[:alt].<=ztop])) # 286.6K = mean Cu layer temperature
 # pmean = mean(skipnan(tmean(:p)[ds[:alt].<=ztop]))
 # rhoL = calc_rhoL(Tmean, pmean)
