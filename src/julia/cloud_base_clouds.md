@@ -22,7 +22,9 @@ TABLE. Standard deviation of specific humidity estimated from subcloud humidity 
 | 0.46 | flux $\overline{w'q'}/u_*$ |
 | 0.44 | standard deviation below $z_{CB}$ within each sounding |
 | 0.99 | standard deviation among soundings |
-| 1.5  | vertical $\overline{q_0}-\overline{q_{CB}}$ |
+| 1.5  | vertical $\overline{q_0}-\overline{q_{CB}}$
+| 0.53 | turbulent mixed layer scalar variance $\sigma_q^2 = (q_0-q_{CB}) \overline{w'q'}/w^*$
+[USE 3x THIS ONE: It has the flux and the gradient within the parameterization]
 
 
 ### Scaling for subcloud humidity under warming

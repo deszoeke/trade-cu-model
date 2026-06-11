@@ -6,7 +6,7 @@ cd("/Users/deszoeks/Projects/ATOMIC/trade-cu-model/src/julia")
 Pkg.activate(".")
 
 using Printf, Dates, NCDatasets, JLD2
-using Statistics, Interpolations, LinearAlgebra
+using Statistics, SpecialFunctions, Interpolations, LinearAlgebra
 
 # using PyPlot -> not thread safe in IJulia with Julia 1.12.4+
 using PythonPlot
@@ -129,3 +129,9 @@ plot(1e3*qm[1:200], 1e-3*z[1:200])
 plot(1e3*qs[1:200], 1e-3*z[1:200])
 
 display(gcf())
+
+# From production-disspation balance of the q variance
+# sigmaq^2 = wq * Dq / wstar
+# strictly this is a proportionality, not an equality, but it gives the right order of magnitude for sigmaq in the SCL
+sigmaq_MLturb = sqrt(wq * Dq / wstar) # .53 g/kg, close to the observed 0.44 g/kg
+Ccb = 0.5 * (1 - erf((qs[icb]-qm[icb])/(3*sigmaq_MLturb))) # 4.8 %
