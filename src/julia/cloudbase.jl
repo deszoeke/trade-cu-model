@@ -133,5 +133,56 @@ display(gcf())
 # From production-disspation balance of the q variance
 # sigmaq^2 = wq * Dq / wstar
 # strictly this is a proportionality, not an equality, but it gives the right order of magnitude for sigmaq in the SCL
-sigmaq_MLturb = sqrt(wq * Dq / wstar) # .53 g/kg, close to the observed 0.44 g/kg
-Ccb = 0.5 * (1 - erf((qs[icb]-qm[icb])/(3*sigmaq_MLturb))) # 4.8 %
+sigmaq_MLturb = sqrt(wq * Dq / (0.1 * wstar) ) # .53 g/kg, close to the observed 0.44 g/kg
+Ccb = 0.5 * (1 - erf((qs[icb]-qm[icb])/(sigmaq_MLturb))) # 5.7 %
+
+# overload the method
+function cloudbase_cloudfrac(; Dq, satdef_cb, wq, wstar=wstar)
+    sigmaq = sqrt(wq * Dq / (0.1 * wstar) ) # g/kg
+    Ccb = 0.5 * (1 - erf((satdef_cb)/sigmaq)) # cloud base cloud fraction
+end
+
+q0 = filter(isfinite, qm)[1]
+qcb = qm[icb]
+qs_cb = qs[icb]
+cloudbase_cloudfrac(Dq = q0-qcb, 
+                    satdef_cb = qs_cb-qcb,
+                    wq = Ecb/rhoL) # 0.057
+cloudbase_cloudfrac(Dq = q0-qcb,
+                    satdef_cb = qs_cb-qcb,
+                    wq = 1.02 * Ecb/rhoL) # 0.05903
+# 0.05903 : just increasing Ecb +2 % increases cloud base cloud fraction to 5.9 %,
+# a relative change of +3.1 %.
+
+# adjust the q, qs profile for climate change, too.
+# they are solved in terms of the original qs for RH0=0.8, RH1=0.81
+
+cloudbase_cloudfrac(Dq = 1.07 * (q0-qcb),
+                    satdef_cb = 1.07 * (qs_cb-qcb),
+                    wq = 1.02 * Ecb/rhoL) # 0.0530
+
+# try surface saturation at LCL condition
+cloudbase_cloudfrac(Dq = 1.07 * (q0-qcb), # supposing uniform RH1
+                    satdef_cb = 0.95*1.07 * (qs_cb-qcb),
+                    wq = 1.02 * Ecb/rhoL) # 0.0623
+
+# Now q_CB is the unknown.
+# Several different alternative assumptions can be made about how it changes with climate change:
+# In all of them, (1-RH) decreases by *0.95 at the surface to quench the evaporative vapor flux (to *1.02).
+# 1. RH increases uniformly by 1 % (absolute) on [0 zcb].
+#   q_cb increases by 1.07*(RH0+1%).
+#   qs_cb - q_cb = [1-(RH0+1%)] * qs_cb = [1-(RH0+1%)] * 1.07*qs_cb0
+# 2. (1-RH) decreases by the ratio *0.95 at all z, so q_CB increases by 0.95*1.07.
+#   qs_cb - q_cb = 0.95 * (1-RH0) * qs_cb = 0.95 * 1.07 * (1-RH0) * qs_cb0
+# 3. Diffusivity k is constant and uniform
+#  k = wq * zcb / [-(q_cb-q_0)]
+#  zcb will appear in \sigma_q instead of the vertical q difference now.
+#  wq = -k dq/dz = k (q_sfc - q_cb) / zcb
+#  dq/dz = - 1/k * wq
+#  q_sfc - q_cb = zcb/k * wq
+#  sigma_q^2 = wq * (q_sfc - q_cb) / (0.1 * wstar) = wq^2 * zcb/(0.1*k*wstar)
+#  sigma_q = wq * sqrt(zcb/(0.1*k*wstar))
+#  q_cb = q_0 - wq * zcb/k 
+#  qs_cb - q_cb = qs_cb - q_sfc + wq * zcb/k
+#
+# compute cloud fraction for each of these...

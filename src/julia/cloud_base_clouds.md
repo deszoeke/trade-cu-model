@@ -23,12 +23,63 @@ TABLE. Standard deviation of specific humidity estimated from subcloud humidity 
 | 0.44 | standard deviation below $z_{CB}$ within each sounding |
 | 0.99 | standard deviation among soundings |
 | 1.5  | vertical $\overline{q_0}-\overline{q_{CB}}$
-| 0.53 | turbulent mixed layer scalar variance $\sigma_q^2 = (q_0-q_{CB}) \overline{w'q'}/w^*$
+| 0.53 | turbulent mixed layer scalar variance $\sigma_{q\mathrm{turb}}^2 = (q_0-q_{CB}) \overline{w'q'}/w^*$
 [USE 3x THIS ONE: It has the flux and the gradient within the parameterization]
 
 
+The mean width of the specific humidity distribution $\sigma_{q\mathrm{turb}} = $\overline{q'^2}^{1/2}$ is parameterized from a production-dissipation balance of specific humidity variance,
+$$
+0 = -\overline{w'q'}(\partial \overline{q}/\partial z) - \chi_q.
+$$
+where 
+$
+\chi_q = \kappa \overline{q'(\partial^2q'/\partial x_i^2)}
+$
+is the humidity variance dissipation
+for the subcloud layer from the surface to cloud base $z_{CB}$ 
+with uniform humidity gradient
+$
+\partial \overline{q}/\partial z.
+$
+The dissipation (dimensions $[ \chi_q ] = [ q'^2 ]/\mathrm{time}$) is parameterized
+$$
+\chi_q = K w^* \overline{q'^2} / z_{CB}.
+$$
+The convetive velocity scale
+$w^* = (z_{CB} B)^{1/3}$
+is larger than the friction velocity $u^*$,
+where
+$B = g \overline{w'T_v'}_0 / T_{v0}$
+is the surface buoyancy flux.
+The variance resulting from the production-dissipation balance,
+$$
+\sigma_{q\mathrm{turb}}^2 = (q_0-q_{CB}) \overline{w'q'}/ (K w^*)
+$$
+depends on the surface to cloud base humidity difference 
+$q_0-q_{CB} = -z_{CB} (\partial \overline{q} / \partial z)$
+and the moisture flux 
+$\overline{w'q'}$. 
+Choosing the empirical constant $K=0.1$, 
+we get 
+$\sigma_{q\mathrm{turb}} = $ 1.7 g kg $^{-1}$
+and cloud-base cloud fraction 
+$$
+C_{CB} = \{ 1 - \mathrm{erf}(
+  [q_s(z_{CB})-q(z_{CB})] / 
+  [\sigma_{q\mathrm{turb}}]) \} / 2
+  = 5.7 \%
+$$
+matching the observed EUREC4A cloud-base cloud fraction 
+(5.4 $\pm$ 3.1 \% from BASTALIAS, Bony et al., 2022; Vogel et al., 2022).
+
 ### Scaling for subcloud humidity under warming
 
+In a warmer climate, the saturation vapor pressure increases +7 \% 
+but precpitation increases only +2 \%. 
+The equal cloud-base moisture flux and surface evaporation 
+that balance the decrease of precipitation 
+also increase +2 \%
+(resulting in no moisture convergence and steady humidity).
 
 ### Surface flux
 
