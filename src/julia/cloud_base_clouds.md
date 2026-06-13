@@ -71,16 +71,48 @@ C_{CB} = \{ 1 - \mathrm{erf}(
 $$
 matching the observed EUREC4A cloud-base cloud fraction 
 (5.4 $\pm$ 3.1 \% from BASTALIAS, Bony et al., 2022; Vogel et al., 2022).
+For constant humidities, the cloud fraction decreses exponentially with on the inverse humidity variance $\sigma_{q\mathrm{turb}}^{-2}.
 
-### Scaling for subcloud humidity under warming
+### Scaling subcloud humidity with warming
 
-In a warmer climate, the saturation vapor pressure increases +7 \% 
-but precpitation increases only +2 \%. 
-The equal cloud-base moisture flux and surface evaporation 
-that balance the decrease of precipitation 
-also increase +2 \%
+In a warmer climate, the saturation vapor pressure increases +7 \% /K 
+but precpitation increases only +2 \% /K. 
+The surface evaporation (and cloud-base moisture flux)
+that balances the decrease of precipitation 
+also increase +2 \% /K
 (resulting in no moisture convergence and steady humidity).
+Accounting only for the +2 \% increase of the evaporation 
+increases the cloud base cloud fraction +3 \%, from 5.7 \% to 5.9 \%.
 
-### Surface flux
+If wind speed and the vapor transfer coefficient stay the same
+and $q_s$ increases by +7 \% /K,
+the sensitivity of the surface evaporation flux 
+$
+E_0 = \rho L C_E U q_s (1-\mathrm{RH})
+$
+is limited to +2 \% /K by quenching the relative saturation deficit
+$1-\mathrm{RH}$ by -5 \% /K.
+Taking the mean surface relative humidity at which vapor evaporates 
+in the tropical circulation to be RH = 0.73, the relative saturation 
+deficit 1-RH = 0.27 decreases by -5 \% /K to 1-RH = 0.26, 
+an absolute increase of RH of about +0.01 /K.
 
-If wind and the heat coefficient stay the same
+Cloud base occurs near the lifting condensation level (LCL) of the surface air, where $q(0) \approx q_s(CB)$ (TABLE HUMIES). The subcloud humidity gradient decreases with height, $q(CB) < q(0)$, but cloud base relative humidity increases with height $RH(0) < RH(CB) < 1$. Saturation specific humidity increases by +7 \%/K. The cloud base humidity is observed in the present climate. Projecting for constant cloud base relative humidity and increased width $\sigma_q$ due to the flux, the cloud fraction increases from 5.7 \% to 6.9 \% (+19 \%). Projecting RH increases by 1-RH decreasing uniformly by -5 \%, results in cloud-base cloud fraction increasing to 7.3 \% (+28 \%). Constant diffusivity estimated from the present gradient and flux
+$
+k = -(\partial\overline{q}/\partial z) / \overline{w'q'}
+$
+projects cloud-base clouds to increase to 8.8 \% /K (+54 \%).
+
+Cloud-base clouds increase in all the experiments.  Increasing cloud base cloud fraction in a warmer climate would contribute a negative effect to the low cloud feedback. The results are implicitly proportional to the cloud-base cloud fraction in the present climate, where we have tuned the parameters of the subcloud turbulence to the EUREC4A cloud-base cloud fraction. They are furthermore sensitve to the parameterization of the mean humidity at cloud base.
+
+TABLE HUMIES. Observed subcloud humidities (g kg $^{-1}$) TOO MUCH PRECISION
+
+| name | value |
+| :--- | :--- |
+| $q(CB)$   | 13.24  |
+| $q_s(CB)$ | 15.12  |
+| RH(CB)    | 0.8756 |
+| $q(0)$    | 14.74  |
+| $q_s(0)$  | 20.22  |
+| RH(0)     | 0.7289 |
+
