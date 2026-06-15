@@ -160,10 +160,10 @@ end
 # ZELINKA FEEDBACK KERNEL FUNCTIONS
 function load_zelinka_kernel( kernel_file=joinpath(datadir, "obs_cloud_kernels4.nc") )
     NCDatasets.Dataset(kernel_file, "r") do kd
-        K_sw_cloudy = kd["SWkernel"][:,:,:,:,:] # -> (albcs, lat, plev, tau, time)
-        K_lw_cloudy = kd["LWkernel"][:,:,:,:]
-    end
+    K_sw_cloudy = kd["SWkernel"][:,:,:,:,:] # -> (albcs, lat, plev, tau, time)
+    K_lw_cloudy = kd["LWkernel"][:,:,:,:]
     return (K_sw_cloudy, K_lw_cloudy)
+    end
 end
 
 # not used:
@@ -283,23 +283,30 @@ function plot_isccp_matrix(ax, data::Matrix, tau_edges=tau_edges, pc_edges=pc_ed
         kwargs...
     )
 
+    cm   = pcm.cmap
+    norm = pcm.norm
+
     # Add text annotations centered inside each bin
     # Determine maximum value to dynamically scale text color contrast
     max_val = maximum(data)  
     for i in 1:num_press_bins
         for j in 1:num_tau_bins
             val = data[i, j]
-            
+
+            r, g, b, _ = PythonPlot.PythonCall.pyconvert(
+                Tuple{Float64, Float64, Float64, Float64}, cm(norm(val)) )
+            lum = 0.299*r + 0.587*g + 0.114*b
+            # Dynamically set text color based on matrix shading depth for legibility
+            #text_color = val > (max_val * 0.5) ? "white" : "black"
+            text_color = (lum > 0.5) ? "black" : "white"
+
             # Find the center coordinates for the current cell
             x_center = (x_grid[j] + x_grid[j+1]) / 2
             y_center = (y_grid[i] + y_grid[i+1]) / 2
             
             # Formats value to 2 decimal places (adjust as needed)
             label_text = @sprintf("%.2f", val) 
-            
-            # Dynamically set text color based on matrix shading depth for legibility
-            text_color = val > (max_val * 0.5) ? "white" : "black"
-            
+
             ax.text(
                 x_center, 
                 y_center, 
