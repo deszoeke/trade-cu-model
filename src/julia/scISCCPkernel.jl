@@ -229,12 +229,13 @@ println("Regional pure clear pixel fraction: ", round(total_domain_clear_sky_pct
 # ncgen -o shcu_isccp_cloud_pct.nc shcu_isccp_cloud_pct.cdl
 # copy the variables we want
 # ncks -A -C -v plev_bnds,tau_bnds,plev,tau obs_cloud_kernels4.nc shcu_isccp_cloud_pct.nc
-ihd = NCDatasets.Dataset(joinpath(datadir, "shcu_isccp_cloud_pct.nc"), "a")
-# write the cloud histogram data
-ihd["cloud_hist"][:,:]    .= isccp_cloudy_histogram_pct
-ihd["clear_prof"][:]      .= isccp_clear_profile_pct
-ihd["clear_pixel_frac"][1] = total_domain_clear_sky_pct
-close(ihd)
+NCDatasets.Dataset(joinpath(datadir, "shcu_isccp_cloud_pct2.nc"), "a") do ihd
+    # write the cloud histogram data
+    ihd["cloud_hist"][:,:]    .= isccp_cloudy_histogram_pct
+    ihd["clear_prof"][:]      .= isccp_clear_profile_pct
+    ihd["clear_pixel_frac"][1] = total_domain_clear_sky_pct
+end
+
 # now use kernels to compute CRE or feedbacks across the cloudy and clear histogram structures
 K_sw_cloudy, K_lw_cloudy = load_zelinka_kernel()
 
@@ -329,7 +330,7 @@ function plot_isccp_matrix(ax, data::Matrix, tau_edges=tau_edges, pc_edges=pc_ed
             y_center = (y_grid[i] + y_grid[i+1]) / 2
             
             # Formats value to 2 decimal places (adjust as needed)
-            label_text = @sprintf("%.2f", val) 
+            label_text = @sprintf("%.2g", round(val, digits=1)) 
 
             ax.text(
                 x_center, 
@@ -339,7 +340,7 @@ function plot_isccp_matrix(ax, data::Matrix, tau_edges=tau_edges, pc_edges=pc_ed
                 va="center", 
                 color=text_color,
                 fontsize=9,
-                weight="bold"
+                # weight="bold"
             )
         end
     end
@@ -364,16 +365,19 @@ function plot_isccp_matrix(ax, data::Matrix, tau_edges=tau_edges, pc_edges=pc_ed
 end
 
 # initialize figure
-fig, axs = subplots(1, 2, figsize=(8, 3))
+fig, axs = subplots(2, 1, figsize=(5, 6))
 axs[0].invert_yaxis() # Invert y-axis to have higher pressures at the bottom
 axs[1].invert_yaxis() # Invert y-axis to have higher pressures at the
-pclf, cb1 = plot_isccp_matrix(axs[0], isccp_cloudy_histogram_pct, tau_edges, pc_edges)
+# axs[2].invert_yaxis() # Invert y-axis to have higher pressures at the
+pclf, cb1 = plot_isccp_matrix(axs[0], isccp_cloudy_histogram_pct, tau_edges, pc_edges,
+    cmap=ColorMap("Blues").resampled(10))
 pcre, cb2 = plot_isccp_matrix(axs[1], sw_cre_hist[:,:,1], tau_edges, pc_edges,
-    cmap=ColorMap("Blues_r"))
+    cmap=ColorMap("Blues_r").resampled(10))
 # pcre.set_cmap("Blues_r")
 axs[0].set_title("GOES cloud fraction (%)")
 axs[1].set_title("SW CRE (W m⁻²)")
-axs[1].set_ylabel(nothing)
+axs[0].set_xlabel(nothing)
+# axs[1].set_ylabel(nothing)
 display(fig)
 
 # example pcolor a masked array
