@@ -1,6 +1,8 @@
 using Pkg; Pkg.activate(".")
+using Revise
 using NCDatasets
 using Statistics
+using Interpolations
 using PythonPlot
 using Printf
 
@@ -65,21 +67,31 @@ function update_isccp_accumulation!(
 
     ds = NCDatasets.Dataset(nc_file, "r")
     
-    lats            = coalesce.(ds["latitude"][:,:], NaN)
-    lons            = coalesce.(ds["longitude"][:,:], NaN)
-    reflectance_vis = coalesce.(ds["reflectance_vis"][:,:], NaN)
-    alpha_obs       = coalesce.(ds["broadband_shortwave_albedo"][:,:], NaN)
-    tau             = coalesce.(ds["cloud_visible_optical_depth"][:,:], NaN)
-    cth_km          = coalesce.(ds["cloud_top_height"][:,:], NaN)
-    pixel_sza       = coalesce.(ds["pixel_sza"][:,:], NaN)
-    alpha_surface   = coalesce.(ds["clearsky_vis_reflectance"][:,:], NaN) # different grid
-    pixel_vza       = coalesce.(ds["pixel_vza"][:,:], NaN)
-    pc              = coalesce.(ds["cloud_top_pressure"][:,:], NaN)
+    lats            = coalesce.(ds["latitude"][:,:], NaN32)
+    lons            = coalesce.(ds["longitude"][:,:], NaN32)
+    grid_lat        = coalesce.(ds["grid_lat"][:], NaN32) # 36 grid
+    grid_lon        = coalesce.(ds["grid_lon"][:], NaN32) # 40 grid
+
+    reflectance_vis = coalesce.(ds["reflectance_vis"][:,:], NaN32) # -> lons, lats
+    # alpha_obs       = coalesce.(ds["broadband_shortwave_albedo"][:,:], NaN32)
+    tau             = coalesce.(ds["cloud_visible_optical_depth"][:,:], NaN32)
+    cth_km          = coalesce.(ds["cloud_top_height"][:,:], NaN32)
+    pixel_sza       = coalesce.(ds["pixel_sza"][:,:], NaN32)
+    clr_vis_refl    = coalesce.(ds["clearsky_vis_reflectance"][:,:], NaN) # 40x36 lon,lat grid
+    pixel_vza       = coalesce.(ds["pixel_vza"][:,:], NaN32)
+    pc              = coalesce.(ds["cloud_top_pressure"][:,:], NaN32)
+
+    itp_clr = extrapolate( interpolate((grid_lon, reverse(grid_lat)), 
+        reverse(clr_vis_refl, dims=2), 
+        Gridded(Linear())), 0.05) # extrapolate with a default clear sky reflectance of 0.05)
+    alpha_surface = Float64.(map((lo, la) -> itp_clr(lo, la), lons, lats))
+    alpha_surface[isnan.(alpha_surface)] .= 0.04 # assign a default surface albedo
 
     close(ds) 
 
     # Compute cloud fraction
-    cloud_fraction = compute_subpixel_cloud_fraction.(alpha_obs, pixel_sza, tau, cth_km, 0.0)
+    # cloud_fraction = compute_subpixel_cloud_fraction.(alpha_obs, pixel_sza, tau, cth_km, 0.0)
+    cloud_fraction = compute_subpixel_cloud_fraction.(reflectance_vis, pixel_sza, tau, cth_km, alpha_surface)
 
     # Universal geographic / solar zenith condition mask
     spatial_mask = (lats .>= lat_min) .& (lats .<= lat_max) .& 
@@ -123,10 +135,10 @@ function update_isccp_accumulation!(
 
     # Increment master footprint tracker in place
     global_denominator[1] += file_valid_footprints
-    println("Processed file: $nc_file (Added $file_valid_footprints footprints to global pool).")
+    println("$nc_file ($file_valid_footprints pixels)")
 end
 
-function compile_isccp_histogram(lats_range, lons_range, data_file_list)
+function compile_isccp_histogram(lat_bounds, lon_bounds, data_file_list)
     #tau_edges = [0.0, 0.3, 1.3, 3.6, 9.4, 23.0, 60.0, 1000.0]
     #pc_edges  = [10.0, 180.0, 310.0, 440.0, 560.0, 680.0, 800.0, 1000.0]
     # Zelinke kernel bin edges:
@@ -147,8 +159,8 @@ function compile_isccp_histogram(lats_range, lons_range, data_file_list)
             global_clear_pixel_counter,
             global_total_footprints, 
             joinpath(datadir, "GOES/all", file), 
-            lats_range, 
-            lons_range, 
+            lat_bounds, 
+            lon_bounds, 
             tau_edges, 
             pc_edges )
 
@@ -167,35 +179,37 @@ function load_zelinka_kernel( kernel_file=joinpath(datadir, "obs_cloud_kernels4.
 end
 
 # not used:
-function compute_zelinka_feedback(
-    dR_cloudy::Matrix{Float64}, 
-    dR_clear_prof::Vector{Float64}, 
-    dR_clear_scalar::Float64,
-    K_sw_cloudy, 
-    K_lw_cloudy )
+# function compute_zelinka_feedback(
+#     dR_cloudy::Matrix{Float64}, 
+#     dR_clear_prof::Vector{Float64}, 
+#     dR_clear_scalar::Float64,
+#     K_sw_cloudy, 
+#     K_lw_cloudy )
     
-    # 1. Component sums from the subpixel profiles
-    sw_cloudy = sum(dR_cloudy .* K_sw_cloudy)
-    lw_cloudy = sum(dR_cloudy .* K_lw_cloudy)
+#     # 1. Component sums from the subpixel profiles
+#     sw_cloudy = sum(dR_cloudy .* K_sw_cloudy)
+#     lw_cloudy = sum(dR_cloudy .* K_lw_cloudy)
     
-    return (SW=sw_cloudy, LW=sw_cloudy, NET=total_sw + total_lw)
-end
+#     return (SW=sw_cloudy, LW=sw_cloudy, NET=total_sw + total_lw)
+# end
 
 # ==============================================================================
 # 3. ENVIRONMENT STATE PREALLOCATION
 # ==============================================================================
 
 # EUREC4A region
-lats_range = (12.5, 16.0)
-lons_range = (-60.0, -49.0)
-# Array playlist matching your data structure
-data_file_list = filter(endswith(".NC"), readdir(joinpath(datadir, "GOES/all")))[37:39]
+lat_bounds = (12.5, 16.0)
+lon_bounds = (-60.0, -49.0)
+# files matching data
+daylight_file(s) = 1200 <= parse(Int,match(r"(\d{4})\.PX\.02K\.NC$", s).captures[1]) <= 1920
+data_file_list = filter(daylight_file, readdir(joinpath(datadir, "GOES/all"))) # [1:3]
+
 # Compile the ISCCP histograms across the domain track
 (   isccp_cloudy_accumulator, 
     isccp_clear_profile_acc, 
     global_clear_pixel_counter, 
     global_total_footprints ) = compile_isccp_histogram(
-        lats_range, lons_range, data_file_list )
+        lat_bounds, lon_bounds, data_file_list )
 
 # ==============================================================================
 # 4. NORMALIZATION FOR RAD KERNELS
@@ -210,6 +224,17 @@ total_domain_clear_sky_pct = (global_clear_pixel_counter / denom) * 100.0
 println("Total pixel count: ", denom)
 println("Regional pure clear pixel fraction: ", round(total_domain_clear_sky_pct[1], digits=2), " %")
 
+# Save the histogram in a netcdf file.
+# first dump and edit the obs kernel cdl file, then
+# ncgen -o shcu_isccp_cloud_pct.nc shcu_isccp_cloud_pct.cdl
+# copy the variables we want
+# ncks -A -C -v plev_bnds,tau_bnds,plev,tau obs_cloud_kernels4.nc shcu_isccp_cloud_pct.nc
+ihd = NCDatasets.Dataset(joinpath(datadir, "shcu_isccp_cloud_pct.nc"), "a")
+# write the cloud histogram data
+ihd["cloud_hist"][:,:]    .= isccp_cloudy_histogram_pct
+ihd["clear_prof"][:]      .= isccp_clear_profile_pct
+ihd["clear_pixel_frac"][1] = total_domain_clear_sky_pct
+close(ihd)
 # now use kernels to compute CRE or feedbacks across the cloudy and clear histogram structures
 K_sw_cloudy, K_lw_cloudy = load_zelinka_kernel()
 
@@ -248,7 +273,6 @@ regardless of the underlying physical values of the bins.
 - `tau_edges`: Array of optical thickness boundaries
 - `pc_edges`: Array of cloud top pressure boundaries (sorted high-to-low or low-to-high)
 """
-
 function plot_isccp_matrix(data::Matrix, tau_edges=tau_edges, pc_edges=pc_edges;
     cmap=ColorMap("Blues"), kwargs...)
     ax = gca()
@@ -351,3 +375,12 @@ axs[0].set_title("GOES cloud fraction (%)")
 axs[1].set_title("SW CRE (W m⁻²)")
 axs[1].set_ylabel(nothing)
 display(fig)
+
+# example pcolor a masked array
+# bad_coords_mask = @.(isnan(lats) | isnan(lons))
+# masked_lon = np_ma.masked_array(lons, mask=bad_coords_mask)
+# masked_lat = np_ma.masked_array(lats, mask=bad_coords_mask)
+# masked_data = np_ma.masked_array(reflectance_vis', mask=bad_coords_mask')
+# pcolor(masked_lon, masked_lat, masked_data)
+# 
+# pcolor transposes based on number of arguments!
