@@ -2,9 +2,13 @@ using Pkg; Pkg.activate(".")
 using Revise
 using NCDatasets
 using Statistics
-using Interpolations
+# using Interpolations
 using PythonPlot
 using Printf
+
+# Apply your global Arial font rules cleanly across the global scope
+rc("font", family="sans-serif")
+rc("font"; Symbol("sans-serif") => "Helvetica")
 
 datadir = "../../../ATOMIC_GOES/data/"
 
@@ -12,23 +16,32 @@ datadir = "../../../ATOMIC_GOES/data/"
 # 1. RADIATIVE TRANSFER LOOKUPS
 # ==============================================================================
 
-function compute_subpixel_cloud_fraction(alpha_obs, sza_deg, tau, cth_km, alpha_surface)
-    if isnan(tau) || isnan(alpha_obs) || isnan(sza_deg) || isnan(cth_km) || isnan(alpha_surface)
-        return NaN
-    end
-    if tau <= 0.0 || alpha_obs <= alpha_surface
-        return 0.0
-    end
-    mu_0 = cos(deg2rad(sza_deg))
-    if mu_0 <= 0.0 return 0.0 end
+# not used. Every cloudy pixel counts as 100 % cloudy in the ISCCP binning
+# no subpixel mixed cloud fraction
+# function compute_subpixel_cloud_fraction(alpha_obs, sza_deg, tau, cth_km, alpha_surface)
+#     if isnan(tau) || isnan(alpha_obs) || isnan(sza_deg) || isnan(cth_km) || isnan(alpha_surface)
+#         return NaN
+#     end
+#     if tau <= 0.0 || alpha_obs <= alpha_surface
+#         return 0.0
+#     end
+#     mu_0 = cos(deg2rad(sza_deg))
+#     if mu_0 <= 0.0 return 0.0 end
 
-    g = cth_km > 6.0 ? 0.75 : 0.85
-    gamma_1 = 0.75 * (1.0 - (g * mu_0))
-    alpha_cloud = (gamma_1 * tau) / (1.0 + (gamma_1 * tau))
-    
-    if alpha_cloud <= alpha_surface return 0.0 end
-    return clamp((alpha_obs - alpha_surface) / (alpha_cloud - alpha_surface), 0.0, 1.0)
-end
+#     g = cth_km > 6.0 ? 0.75 : 0.85
+#     # gamma_1 = 0.75 * (1.0 - (g * mu_0))
+#     Coakley-Chylek 2-stream approximation for cloud albedo:
+#     u = 0.75 * (1.0 - g)
+#     alpha_cloud = alpha_cloud = (u * tau) / (u * tau + mu_0)
+#     ISCCP method for multiple scattering
+#     b = 6.8 * mu_0          # approximate ISCCP coefficient
+#     alpha_cloud = tau^0.75 / (tau^0.75 + b)
+#     # ISCCP from Zelinka
+#     tp = τ^0.895
+#     αc = tp∕(tp + 6.82),
+#     if alpha_cloud <= alpha_surface return 0.0 end
+#     return clamp((alpha_obs - alpha_surface) / (alpha_cloud - alpha_surface), 0.0, 1.0)
+# end
 
 function get_bin_index(value, edges)
     if isnan(value) || value < edges[1] || value > edges[end] return 0 end
@@ -69,29 +82,16 @@ function update_isccp_accumulation!(
     
     lats            = coalesce.(ds["latitude"][:,:], NaN32)
     lons            = coalesce.(ds["longitude"][:,:], NaN32)
-    grid_lat        = coalesce.(ds["grid_lat"][:], NaN32) # 36 grid
-    grid_lon        = coalesce.(ds["grid_lon"][:], NaN32) # 40 grid
-
-    reflectance_vis = coalesce.(ds["reflectance_vis"][:,:], NaN32) # -> lons, lats
-    # alpha_obs       = coalesce.(ds["broadband_shortwave_albedo"][:,:], NaN32)
+    reflectance_vis = coalesce.(ds["reflectance_vis"][:,:], NaN32)
     tau             = coalesce.(ds["cloud_visible_optical_depth"][:,:], NaN32)
-    cth_km          = coalesce.(ds["cloud_top_height"][:,:], NaN32)
     pixel_sza       = coalesce.(ds["pixel_sza"][:,:], NaN32)
-    clr_vis_refl    = coalesce.(ds["clearsky_vis_reflectance"][:,:], NaN) # 40x36 lon,lat grid
     pixel_vza       = coalesce.(ds["pixel_vza"][:,:], NaN32)
     pc              = coalesce.(ds["cloud_top_pressure"][:,:], NaN32)
 
-    itp_clr = extrapolate( interpolate((grid_lon, reverse(grid_lat)), 
-        reverse(clr_vis_refl, dims=2), 
-        Gridded(Linear())), 0.05) # extrapolate with a default clear sky reflectance of 0.05)
-    alpha_surface = Float64.(map((lo, la) -> itp_clr(lo, la), lons, lats))
-    alpha_surface[isnan.(alpha_surface)] .= 0.04 # assign a default surface albedo
+    close(ds)
 
-    close(ds) 
-
-    # Compute cloud fraction
-    # cloud_fraction = compute_subpixel_cloud_fraction.(alpha_obs, pixel_sza, tau, cth_km, 0.0)
-    cloud_fraction = compute_subpixel_cloud_fraction.(reflectance_vis, pixel_sza, tau, cth_km, alpha_surface)
+    # ISCCP-consistent binary classification: cloudy if retrieval produced a valid tau
+    cloud_mask = .!isnan.(tau) .& (tau .> 0.0)
 
     # Universal geographic / solar zenith condition mask
     spatial_mask = (lats .>= lat_min) .& (lats .<= lat_max) .& 
@@ -99,35 +99,27 @@ function update_isccp_accumulation!(
                    (pixel_vza .<= 60.0) .& (pixel_sza .<= 60.0) .& 
                    (.!isnan.(reflectance_vis))
 
-    v_cf   = cloud_fraction[spatial_mask]
-    v_pc   = pc[spatial_mask]
-    v_tau  = tau[spatial_mask]
-    
-    file_valid_footprints = length(v_cf)
+    v_cloud = cloud_mask[spatial_mask]
+    v_pc    = pc[spatial_mask]
+    v_tau   = tau[spatial_mask]
+
+    file_valid_footprints = length(v_cloud)
     if file_valid_footprints == 0 return end
 
     # Accumulate footprint contents down the track
     for i in 1:file_valid_footprints
-        f = v_cf[i]
-        
-        # --- BRANCH 1: Completely Clear Pixel (Skipped by retrieval / has no cloud properties) ---
-        if isnan(f) || f <= 0.0
-            acc_clear_scalar[1] += 1.0  # Accumulate cleanly into the single standalone scalar tracker
-            
-        # --- BRANCH 2: Footprint contains retrieved cloud layer columns ---
+
+        # --- BRANCH 1: Clear pixel — no valid retrieval ---
+        if !v_cloud[i]
+            acc_clear_scalar[1] += 1.0
+
+        # --- BRANCH 2: Cloudy pixel — bin retrieved (tau, pc) into joint histogram ---
         else
-            clear_fraction  = 1.0 - f
-            cloudy_fraction = f
-            
             p_bin = get_bin_index(v_pc[i], pc_edges)
             if p_bin > 0
-                # Record the clear sky background remnant of this cloud footprint at its cloud top pressure
-                acc_clear_profile[p_bin] += clear_fraction
-                
-                # Record the cloudy fraction into the 2D joint histogram matrix
                 tau_bin = get_bin_index(v_tau[i], tau_edges)
-                if tau_bin > 0 
-                    acc_cloudy[p_bin, tau_bin] += cloudy_fraction 
+                if tau_bin > 0
+                    acc_cloudy[p_bin, tau_bin] += 1.0
                 end
             end
         end
@@ -218,7 +210,7 @@ denom = global_total_footprints[1]
 
 # histogram percentage matrices
 isccp_cloudy_histogram_pct = (isccp_cloudy_accumulator ./ denom) .* 100.0
-isccp_clear_profile_pct    = (isccp_clear_profile_acc  ./ denom) .* 100.0
+isccp_clear_profile_pct    = (isccp_clear_profile_acc  ./ denom) .* 100.0 # all zeros
 total_domain_clear_sky_pct = (global_clear_pixel_counter / denom) * 100.0
 
 println("Total pixel count: ", denom)
@@ -229,7 +221,7 @@ println("Regional pure clear pixel fraction: ", round(total_domain_clear_sky_pct
 # ncgen -o shcu_isccp_cloud_pct.nc shcu_isccp_cloud_pct.cdl
 # copy the variables we want
 # ncks -A -C -v plev_bnds,tau_bnds,plev,tau obs_cloud_kernels4.nc shcu_isccp_cloud_pct.nc
-NCDatasets.Dataset(joinpath(datadir, "shcu_isccp_cloud_pct2.nc"), "a") do ihd
+NCDatasets.Dataset(joinpath(datadir, "shcu_isccp_cloud_pct3.nc"), "a") do ihd
     # write the cloud histogram data
     ihd["cloud_hist"][:,:]    .= isccp_cloudy_histogram_pct
     ihd["clear_prof"][:]      .= isccp_clear_profile_pct
@@ -379,6 +371,10 @@ axs[1].set_title("SW CRE (W m⁻²)")
 axs[0].set_xlabel(nothing)
 # axs[1].set_ylabel(nothing)
 display(fig)
+
+for fmt in ["png", "svg", "pdf"]
+    fig.savefig("goes_isccp_cloud_histogram_and_cre.$fmt")
+end
 
 # example pcolor a masked array
 # bad_coords_mask = @.(isnan(lats) | isnan(lons))
