@@ -1,0 +1,16 @@
+Bretherton, Blossey, and Jones, 2013 CGILS Experiments Table
+
+CTL	Control
+CTLD	CTL with diurnal cycle of insolation
+4CO2	CO2 concentration quadrupled from CTL
+dRH	5% free-tropospheric RH decrease
+dWS	5% wind speed decrease (S12 only)
+P2	2 K local SST increase; free-tropospheric moist-adiabatically warmed by 2 K remote boundary-layer warming
+P2D	P2 with diurnal cycle of insolation
+P2S	P2 with 10% subsidence decrease
+P2SFT	P2S but no warming of SST
+P2SFTh	P2S with 1 K warming of SST (S6 only)
+N25	CTL with droplet concentration reduced fourfold to 25 cm−3 (S6 only)
+P2SN25	P2S with droplet concentration reduced fourfold to 25 cm−3 (S6 only)
+dCMIP3	CTL with doubled CO2 and other parameters perturbed as in Table 1
+

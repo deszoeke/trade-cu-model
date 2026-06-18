@@ -1,0 +1,19 @@
+# Ignore all files by default
+*
+CLAUDE.md
+.graphifyignore
+
+# Whitelist .jl
+!*.jl
+#!*.ipynb
+#!*.md
+
+# Also ignore the output folder
+graphify-out/
+old/
+
+# agent folders
+.claude/
+.agents/
+.github/
+

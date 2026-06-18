@@ -9,3 +9,5 @@ __pycache__/
 
 # contains absolute paths for loading the julia working env:
 .vscode
+
+graphify-out/
