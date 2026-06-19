@@ -10,14 +10,14 @@ using Statistics
 
 if @isdefined(PythonPlot)
     using PythonCall
-    "Recast julia Arrays with missing as python masked arrays."
-    function PythonCall.Py(a::Array{Union{T,Missing},N}) where {T,N}
+    "Convert arrays with missing to numpy masked arrays without overriding global conversion."
+    function as_masked_array(a::AbstractArray{Union{T,Missing},N}) where {T<:Real,N}
         np = PythonCall.pyimport("numpy")
-        np.ma.masked_invalid(np.array(replace(a, missing => NaN)))
+        np.ma.array(coalesce.(a, NaN), mask=ismissing.(a))
     end
 
     "close plots with close(\"all\")"
-    close(s::String) = PythonCall.pyimport("matplotlib.pyplot").close(s)
+    close(x) = PythonCall.pyimport("matplotlib.pyplot").close(x)
 elseif @isdefined(PyPlot)
     using PyCall
     using PyCall: PyObject
@@ -37,7 +37,7 @@ using VaporSat # dev ../../deps/VaporSat
 
 export ModelInput, ModelOutput, ModelContext, Experiment # types for experiment data
 export ExpDict # dictionary contains defined experiments
-export init_context
+export init_context, define_experiments
 export integrate_experiment!
 
 # Define the Inputs Container
@@ -317,9 +317,7 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     # cloud fraction density per unit sink rate
     # da/dsinkrate = da/dh * dh/dsinkrate.
     da_dsink, da_ind = dadsinkrate(zt, exp.input.tot_sink, exp.input.cth_bin, exp.input.cth_nrm)
-    println("size(da_dsink): $(size(da_dsink))") # <600 
     acld = ctx.dsink * da_dsink # cloud area fraction in sink rate bin
-    println("size(acld): $(size(acld))")
 
     exp.output.w .= w
     exp.output.acld[da_ind] .= acld
@@ -344,3 +342,58 @@ for exp in values(ExpDict)
     println(exp.name)
     integrate_experiment!(exp, ctx=ctx)
 end
+
+println("Experiment names: $(keys(ExpDict))")
+println("ctx: $(fieldnames(typeof(ctx)))")
+control = ExpDict["control"]
+println("control.input: $(fieldnames(typeof(control.input)))")
+println("control.output: $(fieldnames(typeof(control.output)))")
+
+keyorder = [
+  "control", 
+  "subsidence-5%",
+  "qs+7%",
+  "q&qs+7%",
+  "Ecb+2%",
+  "(1-RH)-5%",
+  ]
+
+PythonPlot.matplotlib.pyplot.close("all")
+figure()
+colrs = ["C0", "C1", "C2", "C3", "C4", "C5"]
+for (i,k) in enumerate(keyorder)
+    exp = ExpDict[k]
+    plot( 1e3*exp.input.qm, 1e-3*ctx.z, label=k, color=colrs[i] )
+    plot( 1e3*exp.input.qs, 1e-3*ctx.z, linewidth=0.5, color=colrs[i] )
+end
+legend(frameon=false)
+ylim([0, 4])
+xlabel("specific humidity (g/kg)")
+ylabel("z (km)")
+display(gcf())
+
+# contour the cloud profiles as a function of sink rate
+PythonPlot.matplotlib.pyplot.close("all")
+figure()
+all_ql = vcat([vec(1e3 .* coalesce.(max.(0, ExpDict[k].output.qc .- ExpDict[k].input.qs), NaN)) for k in keyorder]...)
+finite_vals = filter(isfinite, all_ql)
+vmax = isempty(finite_vals) ? 1.0 : maximum(finite_vals)
+norm = PythonPlot.matplotlib.colors.Normalize(vmin=0.0, vmax=vmax)
+for (i,k) in enumerate(keyorder[[1, 2, 3, 4, 5, 6]])
+    exp = ExpDict[k]
+    ql = max.(0, exp.output.qc .- exp.input.qs)
+    ql_plot = 1e3 .* coalesce.(ql, NaN)
+    contour(exp.input.tot_sink, 1e-3*ctx.z, ql_plot,
+        colors=colrs[i], norm=norm, vmin=0.0, vmax=vmax)
+    plot([-1, -2], [-1, -2], color=colrs[i], label=k)
+end
+# colorbar()
+ylim([0, 4])
+xlim([minimum(control.input.tot_sink), maximum(control.input.tot_sink)])
+xlabel("sink rate (km\$^{-1}\$)")
+ylabel("z (km)")
+legend(frameon=false)
+display(gcf())
+
+# anther way to experiment is to keep the control distribution of
+# sink rates, and recompute the clouds
