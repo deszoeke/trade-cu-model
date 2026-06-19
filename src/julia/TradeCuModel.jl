@@ -284,8 +284,8 @@ end
 # get An-Yi's aggregated GOES cloud fraction vs height data
 function get_goes_cloud_data()
     NCDataset("../../data/goes16_binned_low4km_20200115_20200219.nc") do dsa
-        rfv_nrm = mean(dsa[:rfv_nrm][:,:], dims=2)
-        rfv_acc = mean(dsa[:rfv_acc][:,:], dims=2)
+        rfv_nrm = mean(dsa[:rfv_nrm][:,:], dims=2)[:]
+        rfv_acc = mean(dsa[:rfv_acc][:,:], dims=2)[:]
         cth_bin = dsa[:cth_bin][:]
         return rfv_nrm, rfv_acc, cth_bin
     end
@@ -453,12 +453,12 @@ Compute cloud fraction density per unit sink rate
 da/dsinkrate = da/dh * dh/dsinkrate.
 Interpolates satellite coordinate to model sinkrate coordiante.
 """
-function dadsinkrate(ztop, tot_sink, rfv_nrm, dh=10.0)
+function dadsinkrate(ztop, tot_sink, cth_bin, rfv_nrm, dh=10.0)
     # condition vertical coordinate
     ui = sortunique(ztop)
     h = ztop[ui] # sorted ascending
     hm_ = (h[1:end-1] .+ h[2:end]) / 2
-    ii = hm_ .<= 4000
+    ii = hm_ .<= 4000 # hardwired !!
     hm = hm_[ii]
 
     dh_dsink = diff(h) ./ diff(tot_sink[ui])
@@ -467,11 +467,12 @@ function dadsinkrate(ztop, tot_sink, rfv_nrm, dh=10.0)
     da_dh = rfv_nrm[:] / dh
     # interpolate satellite a(h) to unique h_sink coordinate
     da_dh_to_sink = linear_interpolation((cth_bin*1e3,), da_dh).(hm) 
-    da_dsink = da_dh_to_sink .* -dh_dsink[ii]
+    da_dsink = da_dh_to_sink .* -dh_dsink[ii] # truncates just to useful sink_rate bins
+    da_dsink, eachindex(ii) # return the indices too
 end
 
 # usage later:
-# da_dsink = dadsinkrate(ztop, tot_sink, rfv_nrm)
+# da_dsink = dadsinkrate(ztop, tot_sink, cth_bin, rfv_nrm)
 
 # refine cloud top for x=0.53
 
@@ -534,7 +535,7 @@ end
 # w53, dq53 = updraft_w_dq(Fcld53, qtc53, qm, z, zt53)
 
 # compute da/dsink for x=0.53
-# da_dsink = dadsinkrate(zt53, tot_sink, rfv_nrm)
+# da_dsink = dadsinkrate(zt53, tot_sink, cth_bin, rfv_nrm)
 
 
 "Plot cloud profiles for a single precipitation efficiency x and a range of sink rates tot_sink."
