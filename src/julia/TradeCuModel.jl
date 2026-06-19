@@ -468,7 +468,8 @@ function dadsinkrate(ztop, tot_sink, cth_bin, rfv_nrm, dh=10.0)
     # interpolate satellite a(h) to unique h_sink coordinate
     da_dh_to_sink = linear_interpolation((cth_bin*1e3,), da_dh).(hm) 
     da_dsink = da_dh_to_sink .* -dh_dsink[ii] # truncates just to useful sink_rate bins
-    da_dsink, eachindex(ii) # return the indices too
+    println("sum(ii) = $(sum(ii))")
+    da_dsink, findall(ii) # return the indices too
 end
 
 # usage later:

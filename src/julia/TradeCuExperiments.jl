@@ -169,7 +169,7 @@ cRHminus5pct = Experiment(
 ExpDict = Dict(
     "control" => control,
     "subsidence-5%" => subsminus5pct,
-    "LSqs+7%" => LSqsplus7pct,
+    "qs+7%" => qsplus7pct,
     "q&qs+7%" => qplus7pct,
     "Ecb+2%" => ecbplus2pct,
     "(1-RH)-5%" => cRHminus5pct
@@ -254,9 +254,9 @@ function integrate_experiment!(exp::Experiment)
     # cloud fraction density per unit sink rate
     # da/dsinkrate = da/dh * dh/dsinkrate.
     da_dsink, da_ind = dadsinkrate(zt, exp.input.tot_sink, exp.input.cth_bin, exp.input.cth_nrm)
-    print("size(da_dsink): $(size(da_dsink))") # <600 
+    println("size(da_dsink): $(size(da_dsink))") # <600 
     acld = dsink * da_dsink # cloud area fraction in sink rate bin
-    print("size(acld): $(size(acld))")
+    println("size(acld): $(size(acld))")
 
     exp.output.w .= w
     exp.output.acld[da_ind] .= acld
@@ -272,7 +272,44 @@ end
 
 end # module TradeCuExperiments
 
+#### tests
+
 # run all the experiments and fill the output structures
 for exp in values(ExpDict)
+    println(exp.name)
     integrate_experiment!(exp)
 end
+
+# reproduce bug with experiment, where da_dsink is too long and doesn't align with w[:,da_ind]
+exp = ExpDict["qs+7%"]
+# integrate_experiment!(exp)
+    F2z, G_ls = calc_Ftot( E_cb=exp.input.E_cb, divg=exp.input.divg, 
+        qm=exp.input.qm, 
+        cth_bin=exp.input.cth_bin, cth_acc=exp.input.cth_acc, 
+        dz=dz, icb=findfirst(z .>= exp.input.zcb) )
+    # Flux is distributed to the clouds by their cloud top height distribution.
+
+    # run the cloud model for many sink rates
+    zt, F_cld, F_pcp, qcld = cloudflux_1x(
+        exp.input.tot_sink; x=exp.input.x, 
+        z=z, nz=length(z), 
+        dz=z[2]-z[1],
+        qm=exp.input.qm, qs=exp.input.qs, 
+        F2z=F2z, icb=findfirst(z .>= exp.input.zcb), 
+        qcb=exp.input.qcb )
+
+    # postprocess to get w, a, M, ...
+    w, _ = updraft_w_dq(F_cld, qcld, exp.input.qm, z, zt)
+    # print("size(w): $(size(w))") # nz, ns = (3100, 600)
+
+    # Interpolate satellite coordinate to model sinkrate coordiante.
+    # cloud fraction density per unit sink rate
+    # da/dsinkrate = da/dh * dh/dsinkrate.
+    da_dsink, da_ind = dadsinkrate(zt, exp.input.tot_sink, exp.input.cth_bin, exp.input.cth_nrm)
+    println("size(da_dsink): $(size(da_dsink))") # <600 
+    acld = dsink * da_dsink # cloud area fraction in sink rate bin
+    println("size(acld): $(size(acld))")
+
+    exp.output.w .= w
+    exp.output.acld[da_ind] .= acld
+
