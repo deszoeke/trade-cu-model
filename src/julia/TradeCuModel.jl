@@ -29,8 +29,9 @@ export precipflux_down!, precipflux_down, precipflux_down_sfc
 export calcF2
 export cloudflux_1x
 export updraft_w_dq
+export dadsinkrate
 export tmean, tstd
-export get_sounding_dataset, get_mean_soundings
+export get_sounding_dataset, get_mean_soundings, get_goes_cloud_data
 export virtual_temp, calc_rhoL, Lv, LvK
 # export largescale_drying
 
@@ -278,6 +279,16 @@ function get_mean_soundings(ds=get_sounding_dataset())
     qm  = tmean(:q, ds)
     pm  = tmean(:p, ds)
     return z, tam, thm, qm, pm
+end
+
+# get An-Yi's aggregated GOES cloud fraction vs height data
+function get_goes_cloud_data()
+    NCDataset("../../data/goes16_binned_low4km_20200115_20200219.nc") do dsa
+        rfv_nrm = mean(dsa[:rfv_nrm][:,:], dims=2)
+        rfv_acc = mean(dsa[:rfv_acc][:,:], dims=2)
+        cth_bin = dsa[:cth_bin][:]
+        return rfv_nrm, rfv_acc, cth_bin
+    end
 end
 
 # functions for the cloud model
