@@ -1,10 +1,11 @@
 # environment and code loading header
-using Revise 
+using Revise
+cd(joinpath(homedir(), "Projects/ATOMIC/trade-cu-model/src/julia"))
 using Pkg; Pkg.activate(".")
-
 includet("TradeCuModel.jl")
 
 using PythonPlot
+using Printf
 using Statistics
 
 if @isdefined(PythonPlot)
@@ -34,6 +35,11 @@ using ..TradeCuModel
 using PythonPlot
 using Statistics
 using VaporSat # dev ../../deps/VaporSat
+
+export ModelInput, ModelOutput, Experiment # types for experiments
+export ExpDict # dictionary contains defined experiments
+export integrate_experiment!
+export init_context
 
 # Define the Inputs Container
 struct ModelInput
@@ -70,120 +76,175 @@ struct Experiment
     output::ModelOutput
 end
 
-# initialize model inputs
+"Shared, cached data loaded once for all experiments."
+struct ExperimentContext
+    z::Vector{Float64}
+    qm::Vector{Float64}
+    qs::Vector{Float64}
+    cth_bin::Vector{Float64}
+    rfv_acc::Vector{Float64}
+    rfv_nrm::Vector{Float64}
+    dz::Float64
+    dsink::Float64
+    zcb::Float64
+    zi::Float64
+    ztop::Float64
+    rhoL::Float64
+end
 
-# parameters and initialization
-KelvinCelsius=273.15 # K
-zi   = 4.0e3    # m  # inversion for tapering subsidence
-ztop = 4.0e3    # m  # top of cloud model integration domain
-zcb  = 700.0    # m
-divg = 1.5e-6   # 1/s
-x = 0.53 # parameter precipitation efficiency
+"Load sounding and GOES data once and return initialized context."
+function init_context()
+    KelvinCelsius = 273.15 # K
+    zi = 4.0e3             # m
+    ztop = 4.0e3           # m
+    zcb = 700.0            # m
 
-# ensemble of sink rates
-tot_sink = range(6.3523e-4, 5.7e-3, length=600) # min tuned for x=0.53 to get the highest possible cloud top
-dsink = tot_sink[2] - tot_sink[1]
-# tot_sink = (1 .+tanh.(range(-8*pi, 0, length=600))) .* (5e-3 - 1e-4) .+ 1e-4
-# tot_sink = range(6.1716e-4, 5.8e-3, length=600) # min tuned for x=0.53 to get the highest possible cloud top
+    tot_sink = range(6.3523e-4, 5.7e-3, length=600)
+    dsink = tot_sink[2] - tot_sink[1]
 
-z, tam, thm, qm, pm = get_mean_soundings()
-#m  K       kg/kg Pa 
-qs  = qsat.(pm, tam.-KelvinCelsius) # kg/kg
-tvm  = virtual_temp.(tam, qm) # virtual temperature, K
-# thvm = virtual_temp.(thm, qm) # virtual potential temperature, K
-dz = z[2]-z[1]
-# icb = findfirst(z .>= zcb) # cloud base index
+    z, tam, _, qm, pm = get_mean_soundings()
+    qs = qsat.(pm, tam .- KelvinCelsius)
+    tvm = virtual_temp.(tam, qm)
+    dz = z[2] - z[1]
 
-rfv_nrm, rfv_acc, cth_bin = get_goes_cloud_data() # reflectivity data
-#size(rfv_nrm), size(cth_bin) # (351,1)
+    rfv_nrm, rfv_acc, cth_bin = get_goes_cloud_data()
+    rhoL = mean(filter(isfinite, calc_rhoL.(tvm, pm)[z .<= ztop]))
 
-rhoL = mean(filter(isfinite, calc_rhoL.(tvm, pm)[z.<=ztop])) # 2.41e6 J/m^3
-E_cb = 180.0 # W/m^2; just the cloud vapor flux; E0 - 35?
-qcb = qs[findfirst(z .>= zcb)] # kg/kg; cloud base specific humidity
-ns = length(tot_sink)
-nz = length(z)
+    return ExperimentContext(
+        collect(z),
+        collect(qm),
+        collect(qs),
+        vec(collect(cth_bin)),
+        vec(collect(rfv_acc)),
+        vec(collect(rfv_nrm)),
+        dz,
+        dsink,
+        zcb,
+        zi,
+        ztop,
+        rhoL,
+    )
+end
 
-# initialize experiment input and output structures
-control = Experiment(
-    "control",
-    "Control",
-    ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-    ModelOutput( Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-                 Vector{Union{Missing, Float64}}(missing,    ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-                 Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-                 Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns) )
-)
 
-subsminus5pct = Experiment(
-    "subsidence-5%",
-    "LS subsidence - 5%",
-    ModelInput(qm, qs, zcb, qcb, E_cb, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-    ModelOutput( Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-                 Vector{Union{Missing, Float64}}(missing,    ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-                 Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-                 Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns) )
-)
+"initialize parameters, grids, data for experiments"
+function setup_experiments(; ctx::ExperimentContext)
+    #   parameters and initialization
+    zi   = ctx.zi    # m  # inversion for tapering subsidence
+    ztop = ctx.ztop  # m  # top of cloud model integration domain
+    zcb  = ctx.zcb   # m
+    divg = 1.5e-6   # 1/s
+    x = 0.53 # parameter precipitation efficiency
 
-qsplus7pct = Experiment(
-    "qs+7%",
-    "qs + 7%, LS subsidence - 5%, LOW RH!",
-    ModelInput(qm, qs*1.07, zcb, qcb*1.07, E_cb, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-    ModelOutput( Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-                 Vector{Union{Missing, Float64}}(missing,    ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-                 Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-                 Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns) )
-)
+    # ensemble of sink rates
+    tot_sink = range(6.3523e-4, 5.7e-3, length=600) # min tuned for x=0.53 to get the highest possible cloud top
+    dsink = ctx.dsink
+    # tot_sink = (1 .+tanh.(range(-8*pi, 0, length=600))) .* (5e-3 - 1e-4) .+ 1e-4
+    # tot_sink = range(6.1716e-4, 5.8e-3, length=600) # min tuned for x=0.53 to get the highest possible cloud top
 
-qplus7pct = Experiment(
-    "q&qs+7%",
-    "q and qs + 7%, subsidence - 5%, RH=control",
-    ModelInput(qm*1.07, qs*1.07, zcb, qcb*1.07, E_cb, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-    ModelOutput( Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-                 Vector{Union{Missing, Float64}}(missing,    ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-                 Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-                 Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns) )
-)
+    z = ctx.z
+    qm = ctx.qm
+    qs = ctx.qs
+    dz = ctx.dz
+    # icb = findfirst(z .>= zcb) # cloud base index
 
-ecbplus2pct = Experiment(
-    "Ecb+2%",
-    "E_cb + 2%, q,qs + 7%, subsidence - 5%",
-    ModelInput(qm*1.07, qs*1.07, zcb, qcb*1.07, E_cb*1.02, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-    ModelOutput( Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-                 Vector{Union{Missing, Float64}}(missing,    ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-                 Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-                 Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns) )
-)
+    cth_bin = ctx.cth_bin
+    rfv_acc = ctx.rfv_acc
+    rfv_nrm = ctx.rfv_nrm
+    #size(rfv_nrm), size(cth_bin) # (351,1)
 
-qm_ = @. (1 - 0.95*(1-qm/qs)) * qs * 1.07
-cRHminus5pct = Experiment(
-    "(1-RH)-5%",
-    "subcloud (1-RH) - 5%, E_cb + 2%, q,qs + 7%, subsidence - 5%",
-    ModelInput(qm_, qs*1.07, zcb, qcb*1.07, E_cb*1.02, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-    ModelOutput( Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-                 Vector{Union{Missing, Float64}}(missing,    ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-                 Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-                 Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns) )
-)
+    rhoL = ctx.rhoL # 2.41e6 J/m^3
+    E_cb = 180.0 # W/m^2; just the cloud vapor flux; E0 - 35?
+    qcb = qs[findfirst(z .>= zcb)] # kg/kg; cloud base specific humidity
+    ns = length(tot_sink)
+    nz = length(z)
+    return ( qm, qs, zcb, qcb, E_cb, x, divg, 
+        tot_sink, cth_bin, rfv_acc, rfv_nrm, 
+        rhoL, E_cb, qcb, ns, nz )
+end
 
-# experiment dictionary for looping, and defining short names
-ExpDict = Dict(
-    "control" => control,
-    "subsidence-5%" => subsminus5pct,
-    "qs+7%" => qsplus7pct,
-    "q&qs+7%" => qplus7pct,
-    "Ecb+2%" => ecbplus2pct,
-    "(1-RH)-5%" => cRHminus5pct
-)
+"initialize experiments with input parameters and empty output structures"
+function define_experiments(; ctx::ExperimentContext)
+    ( qm, qs, zcb, qcb, E_cb, x, divg, 
+        tot_sink, cth_bin, rfv_acc, rfv_nrm, 
+        rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx)
+
+    allocate_output() = ModelOutput( 
+        Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
+        Vector{Union{Missing, Float64}}(missing,    ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
+        Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
+        Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns) )
+        
+    # initialize experiment input and output structures
+    control = Experiment(
+        "control",
+        "Control",
+        ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, tot_sink, cth_bin, rfv_acc, rfv_nrm),
+        allocate_output()
+    )
+
+    subsminus5pct = Experiment(
+        "subsidence-5%",
+        "LS subsidence - 5%",
+        ModelInput(qm, qs, zcb, qcb, E_cb, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
+        allocate_output()
+    )
+
+    qsplus7pct = Experiment(
+        "qs+7%",
+        "qs + 7%, LS subsidence - 5%, LOW RH!",
+        ModelInput(qm, qs*1.07, zcb, qcb*1.07, E_cb, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
+        allocate_output()
+    )
+
+    qplus7pct = Experiment(
+        "q&qs+7%",
+        "q and qs + 7%, subsidence - 5%, RH=control",
+        ModelInput(qm*1.07, qs*1.07, zcb, qcb*1.07, E_cb, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
+        allocate_output()
+    )
+
+    ecbplus2pct = Experiment(
+        "Ecb+2%",
+        "E_cb + 2%, q,qs + 7%, subsidence - 5%",
+        ModelInput(qm*1.07, qs*1.07, zcb, qcb*1.07, E_cb*1.02, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
+        allocate_output()
+    )
+
+    qm_ = @. (1 - 0.95*(1-qm/qs)) * qs * 1.07
+    cRHminus5pct = Experiment(
+        "(1-RH)-5%",
+        "subcloud (1-RH) - 5%, E_cb + 2%, q,qs + 7%, subsidence - 5%",
+        ModelInput(qm_, qs*1.07, zcb, qcb*1.07, E_cb*1.02, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
+        allocate_output()
+    )
+
+    # experiment dictionary for looping, and defining short names
+    ExpDict = Dict(
+        "control" => control,
+        "subsidence-5%" => subsminus5pct,
+        "qs+7%" => qsplus7pct,
+        "q&qs+7%" => qplus7pct,
+        "Ecb+2%" => ecbplus2pct,
+        "(1-RH)-5%" => cRHminus5pct
+    )
+end
 
 "large scale moisture flux profile distributed to clouds top height bins"
-function calc_Ftot(; E_cb=E_cb, # W/m^2; just the cloud vapor flux; E0 - 35?
+function calc_Ftot(; ctx::ExperimentContext,
+                     E_cb, # W/m^2; just the cloud vapor flux; E0 - 35?
                      rhb_prate=8.88e-6, # kg/s
-                     divg=divg,
-                     qm=qm,
-                     cth_bin=cth_bin,
-                     cth_acc=rfv_acc,
-                     dz=dz,
-                     icb=findfirst(z .>= zcb) )
+                     divg,
+                     qm,
+                     cth_bin,
+                     cth_acc,
+                     dz=ctx.dz,
+                     icb=findfirst(ctx.z .>= ctx.zcb) )
+
+    z = ctx.z
+    zi = ctx.zi
+    ztop = ctx.ztop
+    rhoL = ctx.rhoL
 
     # align cth data; cth_bin starts at z=500
     offset = findfirst(x->x≈cth_bin[1]*1e3, z) - 1 # 50
@@ -229,9 +290,12 @@ function calc_Ftot(; E_cb=E_cb, # W/m^2; just the cloud vapor flux; E0 - 35?
 end
 
 "integrate an experiment based on inputs, modify output in place"
-function integrate_experiment!(exp::Experiment)
+function integrate_experiment!(exp::Experiment; ctx::ExperimentContext)
+    z = ctx.z
+    dz = ctx.dz
+
     # compute cloud+precipitation moisture flux that balances large scale drying
-    F2z, G_ls = calc_Ftot( E_cb=exp.input.E_cb, divg=exp.input.divg, 
+    F2z, G_ls = calc_Ftot( ctx=ctx, E_cb=exp.input.E_cb, divg=exp.input.divg,
         qm=exp.input.qm, 
         cth_bin=exp.input.cth_bin, cth_acc=exp.input.cth_acc, 
         dz=dz, icb=findfirst(z .>= exp.input.zcb) )
@@ -255,7 +319,7 @@ function integrate_experiment!(exp::Experiment)
     # da/dsinkrate = da/dh * dh/dsinkrate.
     da_dsink, da_ind = dadsinkrate(zt, exp.input.tot_sink, exp.input.cth_bin, exp.input.cth_nrm)
     println("size(da_dsink): $(size(da_dsink))") # <600 
-    acld = dsink * da_dsink # cloud area fraction in sink rate bin
+    acld = ctx.dsink * da_dsink # cloud area fraction in sink rate bin
     println("size(acld): $(size(acld))")
 
     exp.output.w .= w
@@ -275,41 +339,9 @@ end # module TradeCuExperiments
 #### tests
 
 # run all the experiments and fill the output structures
+ctx = init_context()
+ExpDict = define_experiments(ctx=ctx)
 for exp in values(ExpDict)
     println(exp.name)
-    integrate_experiment!(exp)
+    integrate_experiment!(exp, ctx=ctx)
 end
-
-# reproduce bug with experiment, where da_dsink is too long and doesn't align with w[:,da_ind]
-exp = ExpDict["qs+7%"]
-# integrate_experiment!(exp)
-    F2z, G_ls = calc_Ftot( E_cb=exp.input.E_cb, divg=exp.input.divg, 
-        qm=exp.input.qm, 
-        cth_bin=exp.input.cth_bin, cth_acc=exp.input.cth_acc, 
-        dz=dz, icb=findfirst(z .>= exp.input.zcb) )
-    # Flux is distributed to the clouds by their cloud top height distribution.
-
-    # run the cloud model for many sink rates
-    zt, F_cld, F_pcp, qcld = cloudflux_1x(
-        exp.input.tot_sink; x=exp.input.x, 
-        z=z, nz=length(z), 
-        dz=z[2]-z[1],
-        qm=exp.input.qm, qs=exp.input.qs, 
-        F2z=F2z, icb=findfirst(z .>= exp.input.zcb), 
-        qcb=exp.input.qcb )
-
-    # postprocess to get w, a, M, ...
-    w, _ = updraft_w_dq(F_cld, qcld, exp.input.qm, z, zt)
-    # print("size(w): $(size(w))") # nz, ns = (3100, 600)
-
-    # Interpolate satellite coordinate to model sinkrate coordiante.
-    # cloud fraction density per unit sink rate
-    # da/dsinkrate = da/dh * dh/dsinkrate.
-    da_dsink, da_ind = dadsinkrate(zt, exp.input.tot_sink, exp.input.cth_bin, exp.input.cth_nrm)
-    println("size(da_dsink): $(size(da_dsink))") # <600 
-    acld = dsink * da_dsink # cloud area fraction in sink rate bin
-    println("size(acld): $(size(acld))")
-
-    exp.output.w .= w
-    exp.output.acld[da_ind] .= acld
-
