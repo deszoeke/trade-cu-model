@@ -32,14 +32,13 @@ end
 module TradeCuExperiments
 
 using ..TradeCuModel
-using PythonPlot
 using Statistics
 using VaporSat # dev ../../deps/VaporSat
 
-export ModelInput, ModelOutput, Experiment # types for experiments
+export ModelInput, ModelOutput, ModelContext, Experiment # types for experiment data
 export ExpDict # dictionary contains defined experiments
-export integrate_experiment!
 export init_context
+export integrate_experiment!
 
 # Define the Inputs Container
 struct ModelInput
@@ -77,7 +76,7 @@ struct Experiment
 end
 
 "Shared, cached data loaded once for all experiments."
-struct ExperimentContext
+struct ModelContext
     z::Vector{Float64}
     qm::Vector{Float64}
     qs::Vector{Float64}
@@ -110,7 +109,7 @@ function init_context()
     rfv_nrm, rfv_acc, cth_bin = get_goes_cloud_data()
     rhoL = mean(filter(isfinite, calc_rhoL.(tvm, pm)[z .<= ztop]))
 
-    return ExperimentContext(
+    return ModelContext(
         collect(z),
         collect(qm),
         collect(qs),
@@ -128,7 +127,7 @@ end
 
 
 "initialize parameters, grids, data for experiments"
-function setup_experiments(; ctx::ExperimentContext)
+function setup_experiments(; ctx::ModelContext)
     #   parameters and initialization
     zi   = ctx.zi    # m  # inversion for tapering subsidence
     ztop = ctx.ztop  # m  # top of cloud model integration domain
@@ -164,7 +163,7 @@ function setup_experiments(; ctx::ExperimentContext)
 end
 
 "initialize experiments with input parameters and empty output structures"
-function define_experiments(; ctx::ExperimentContext)
+function define_experiments(; ctx::ModelContext)
     ( qm, qs, zcb, qcb, E_cb, x, divg, 
         tot_sink, cth_bin, rfv_acc, rfv_nrm, 
         rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx)
@@ -231,7 +230,7 @@ function define_experiments(; ctx::ExperimentContext)
 end
 
 "large scale moisture flux profile distributed to clouds top height bins"
-function calc_Ftot(; ctx::ExperimentContext,
+function calc_Ftot(; ctx::ModelContext,
                      E_cb, # W/m^2; just the cloud vapor flux; E0 - 35?
                      rhb_prate=8.88e-6, # kg/s
                      divg,
@@ -290,7 +289,7 @@ function calc_Ftot(; ctx::ExperimentContext,
 end
 
 "integrate an experiment based on inputs, modify output in place"
-function integrate_experiment!(exp::Experiment; ctx::ExperimentContext)
+function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     z = ctx.z
     dz = ctx.dz
 
@@ -336,7 +335,7 @@ end
 
 end # module TradeCuExperiments
 
-#### tests
+using .TradeCuExperiments
 
 # run all the experiments and fill the output structures
 ctx = init_context()
