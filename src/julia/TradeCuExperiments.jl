@@ -33,6 +33,7 @@ module TradeCuExperiments
 using ..TradeCuModel
 using PythonPlot
 using Statistics
+using VaporSat # dev ../../deps/VaporSat
 
 # Define the Inputs Container
 struct ModelInput
