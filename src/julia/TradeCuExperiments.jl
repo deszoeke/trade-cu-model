@@ -397,3 +397,29 @@ display(gcf())
 
 # anther way to experiment is to keep the control distribution of
 # sink rates, and recompute the clouds
+
+# The clouds don't depend on the fluxes at all.
+# So we can integrate the clouds separately,
+# find the sink rates that give clouds of each height,
+# assign fractions to these from the obseved 
+# cloud top height and 
+# partition the large-scale moisture flux to the cloud flux.
+# Then finally calculate the cloud fluxes, mass fluxes, and velocities.
+
+# get sink rate as a function of cloud top height
+exp = ExpDict["control"]
+iz = findall(ctx.zcb .<= ctx.z .<= ctx.ztop)
+sinkz = NaN .+ zeros(length(ctx.z)) # fill a vector with NaN
+TradeCuModel.find_contour!(sinkz[iz], exp.input.tot_sink,
+    permutedims((exp.output.qc.-exp.input.qs)[iz,:]), 0.0)
+plot(sinkz, ctx.z, "k"); display(gcf())
+
+q = permutedims(exp.output.qc.-exp.input.qs)
+# sinkz = similar(ctx.z, Union{eltype(ctx.z), Missing})
+sinkz = NaN .+ zeros(length(ctx.z)) # fill a vector with NaN
+iz = findall(ctx.zcb .<= ctx.z .<= ctx.ztop)
+TradeCuModel.find_contour!(@view(sinkz[iz]), exp.input.tot_sink, q[:,iz], 0.0)
+plot(sinkz, ctx.z, "k"); display(gcf())
+# Now sinkz and ctx.z are 1 to 1, and 75:302 are valid low clouds.
+# Map these to the cloud top height distribution 
+# to get the cloud fraction for each of the interpolated sink rates in sinkz.

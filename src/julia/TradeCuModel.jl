@@ -29,7 +29,7 @@ export precipflux_down!, precipflux_down, precipflux_down_sfc
 export calcF2
 export cloudflux_1x
 export updraft_w_dq
-export dadsinkrate
+export dadsinkrate, find_contour!
 export tmean, tstd
 export get_sounding_dataset, get_mean_soundings, get_goes_cloud_data
 export virtual_temp, calc_rhoL, Lv, LvK
@@ -468,6 +468,7 @@ function dadsinkrate(ztop, tot_sink, cth_bin, rfv_nrm, dh=10.0)
     # interpolate satellite a(h) to unique h_sink coordinate
     da_dh_to_sink = linear_interpolation((cth_bin*1e3,), da_dh).(hm) 
     da_dsink = da_dh_to_sink .* -dh_dsink[ii] # truncates just to useful sink_rate bins
+    # println("sum(ii) = $(sum(ii))")
     da_dsink, findall(ii) # return the indices too
 end
 
@@ -537,6 +538,34 @@ end
 # compute da/dsink for x=0.53
 # da_dsink = dadsinkrate(zt53, tot_sink, cth_bin, rfv_nrm)
 
+# Find the total sink rate at which the cloud top reaches each z in the grid.
+"""
+    find_contour!(X_out, x, y, q, c)
+where q=c for each y in the grid. X_out has dimensions of y.
+"""
+function find_contour!(X_out, x, q, c)
+    Nx, Ny = size(q)
+    peaks = [argmax([isnan(v) || ismissing(v) ? -Inf : v for v in q[i, :]]) for i in 1:Nx]
+
+    for j in 1:Ny
+        idx = searchsortedlast(reverse(@view q[:, j]), c)
+        (idx == 0 || idx == Nx) && continue
+        i = Nx - idx # index in verso
+        if j > peaks[i] && !isnan(q[i,j]) && !isnan(q[i+1,j])
+            X_out[j] = x[i] + (x[i+1] - x[i]) * (c - q[i,j]) / (q[i+1,j] - q[i,j])
+        end
+    end
+end
+function find_contour(x,y, q, c=0) # returning wrapper
+    X_out = Vector{Float64}(missing, length(y))
+    find_contour!(X_out, x, q, c)
+    return X_out
+end
+# interpolate the total sink rate that gives cloud top at each z.
+# iz = findall(zcb .< z .<= ztop)
+# sinkz = Vector{Float64}(missing, length(z))
+# find_contour!(sinkz[iz], tot_sink, z[iz], pd((qtc.-qs)[iz,:]), 0)
+# plot(sinkz, z, "k")
 
 "Plot cloud profiles for a single precipitation efficiency x and a range of sink rates tot_sink."
 function plot_qv_qc_w(tot_sink, z, da_dsink, ztop, qtc, Fcld, w, qm, qs; x=0.53, ntp=500)
