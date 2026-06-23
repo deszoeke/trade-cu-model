@@ -414,11 +414,10 @@ end
 # findcloudtop(ql, z; zcb=2000) = findfirst(ql .<= 0 .&& z .> zcb )
 
 "terminate the cloud either at ql=0 or at the elevated minimum ql in the trade inversion"
-function findcloudtop(ql, z; zcb, ist=findfirst(z .>= 2000), ien=findfirst(z .<= 5000))
-    if all(ismissing, ql)
-        return nothing
-    elseif all(isnan, ql)
-        return nothing
+function findcloudtop(ql, z; zcb, ist=findfirst(z .>= 2000), ien=findfirst(z .>= 5000))
+    ql = coalesce.(ql, NaN)
+    if all(isnan, ql)
+        return 0
     else
         itop = findfirst(ql .<= 0 .&& z .> zcb )
         if isnothing(itop) # choose the minimum in 2000<=z<=5000
@@ -510,7 +509,8 @@ function cloudflux_1x(tot_sink=tot_sink; x=x,
         ae = tot_sink[ia]
         # compute clouds
         qt = q_total(dz*ae, x, qs, qm; i0=icb, qt0=qcb)
-        ql = max.(0, qt.-qs)
+        qd = qt.-qs
+        ql = max.(0, qd)
         itop = findcloudtop(ql,z; zcb=z[icb])
         if !isnothing(itop) 
             ztop[ia] = z[itop] # ztop can be up to 20 km

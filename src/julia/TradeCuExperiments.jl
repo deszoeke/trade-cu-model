@@ -294,6 +294,7 @@ end
 
 "integrate an experiment based on inputs, modify output in place"
 function integrate_experiment!(exp::Experiment; ctx::ModelContext)
+    println("integrate_experiment! $(exp.name)")
     z = ctx.z
     dz = ctx.dz
 
@@ -323,9 +324,11 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     # Interpolate satellite coordinate to model sinkrate coordiante.
     # cloud fraction density per unit sink rate
     # da/dsinkrate = da/dh * dh/dsinkrate.
+
     da_dsink, da_ind = dadsinkrate(zt, exp.input.tot_sink, exp.input.cth_bin, exp.input.cth_nrm)
     acld = ctx.dsink * da_dsink # cloud area fraction in sink rate bin
 
+    println("size(w)=$(size(w))")
     exp.output.w .= w
     exp.output.acld[da_ind] .= acld
     exp.output.M[:,da_ind] .= w[:,da_ind] .* acld' # mass flux per sink rate
@@ -363,14 +366,14 @@ keyorder = [
   "q&qs+7%",
   "Ecb+2%",
   "(1-RH)-5%",
-  ]
+  "DIM" ]
 
 PythonPlot.matplotlib.pyplot.close("all")
 figure()
-colrs = ["C0", "C1", "C2", "C3", "C4", "C5"]
+colrs = ["C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9"]
 for (i,k) in enumerate(keyorder)
     exp = ExpDict[k]
-    plot( 1e3*exp.input.qm, 1e-3*ctx.z, label=k, color=colrs[i] )
+    plot( 1e3*exp.input.qm, 1e-3*ctx.z, linewidth=0.5, label=k, color=colrs[i] )
     plot( 1e3*exp.input.qs, 1e-3*ctx.z, linewidth=0.5, color=colrs[i] )
 end
 legend(frameon=false)
@@ -424,7 +427,7 @@ plot(sinkz, ctx.z, "k"); display(gcf())
 function define_control_sink_experiment(; ctx::ModelContext, sinkz=sinkz)
     ( qm, qs, zcb, qcb, E_cb, x, divg, 
         tot_sink, cth_bin, rfv_acc, rfv_nrm, 
-        rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx)
+        rhoL, E_cb, qcb, ns, nz ) = TradeCuExperiments.setup_experiments(ctx=ctx)
 
     allocate_output() = ModelOutput( 
         Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
@@ -439,4 +442,4 @@ function define_control_sink_experiment(; ctx::ModelContext, sinkz=sinkz)
 end
 # tot_sink now matches cloud top height at each z
 control_sink = define_control_sink_experiment(ctx=ctx, sinkz=sinkz)
-integrate_experiment!(control_sink, ctx=ctx)
+@invokelatest integrate_experiment!(control_sink, ctx=ctx)
