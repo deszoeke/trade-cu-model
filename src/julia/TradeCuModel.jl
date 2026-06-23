@@ -415,9 +415,15 @@ end
 
 "terminate the cloud either at ql=0 or at the elevated minimum ql in the trade inversion"
 function findcloudtop(ql, z; zcb, ist=findfirst(z .>= 2000), ien=findfirst(z .<= 5000))
-    itop = findfirst(ql .<= 0 .&& z .> zcb )
-    if isnothing(itop) # choose the minimum in 2000<=z<=5000
-        itop = argmin(ql[ist:ien]) + ist - 1
+    if all(ismissing, ql)
+        return nothing
+    elseif all(isnan, ql)
+        return nothing
+    else
+        itop = findfirst(ql .<= 0 .&& z .> zcb )
+        if isnothing(itop) # choose the minimum in 2000<=z<=5000
+            itop = argmin(ql[ist:ien]) + ist - 1
+        end
     end
     itop
 end
@@ -506,15 +512,17 @@ function cloudflux_1x(tot_sink=tot_sink; x=x,
         qt = q_total(dz*ae, x, qs, qm; i0=icb, qt0=qcb)
         ql = max.(0, qt.-qs)
         itop = findcloudtop(ql,z; zcb=z[icb])
-        ztop[ia] = z[itop] # ztop can be up to 20 km
-        if !isnothing(itop) && !deep_cloud(ql,z)
-            qtc[:,ia] .= qt
-            fill!(ff, F2z[itop]) # use uniform flux for the experiment's cloud top height
-            Fp[:,ia] .= -precipflux_down( x, ae, ff, ql, qt, qm, istart=itop, icb=icb, dz=dz )
-            # Pcb[ia] = -Fp[icb,ia]
-            # cloud updraft flux
-            Fcld[:,ia] .= -Fp[:,ia] .+ F2z[itop]
-            # cloud        = -precip         eddy
+        if !isnothing(itop) 
+            ztop[ia] = z[itop] # ztop can be up to 20 km
+            if !deep_cloud(ql,z)
+                qtc[:,ia] .= qt
+                fill!(ff, F2z[itop]) # use uniform flux for the experiment's cloud top height
+                Fp[:,ia] .= -precipflux_down( x, ae, ff, ql, qt, qm, istart=itop, icb=icb, dz=dz )
+                # Pcb[ia] = -Fp[icb,ia]
+                # cloud updraft flux
+                Fcld[:,ia] .= -Fp[:,ia] .+ F2z[itop]
+                # cloud        = -precip       eddy
+            end
         end
     end
     ztop, Fcld, Fp, qtc

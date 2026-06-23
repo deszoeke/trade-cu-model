@@ -39,6 +39,7 @@ export ModelInput, ModelOutput, ModelContext, Experiment # types for experiment 
 export ExpDict # dictionary contains defined experiments
 export init_context, define_experiments
 export integrate_experiment!
+export get_sinkrate
 
 # Define the Inputs Container
 struct ModelInput
@@ -176,47 +177,34 @@ function define_experiments(; ctx::ModelContext)
         
     # initialize experiment input and output structures
     control = Experiment(
-        "control",
-        "Control",
+        "control", "Control",
         ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-        allocate_output()
-    )
-
+        allocate_output() )
     subsminus5pct = Experiment(
-        "subsidence-5%",
-        "LS subsidence - 5%",
+        "subsidence-5%", "LS subsidence-5%",
         ModelInput(qm, qs, zcb, qcb, E_cb, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-        allocate_output()
-    )
-
+        allocate_output() )
     qsplus7pct = Experiment(
-        "qs+7%",
-        "qs + 7%, LS subsidence - 5%, LOW RH!",
+        "qs+7%", "qs+7%, LS subsidence-5%, LOW RH!",
         ModelInput(qm, qs*1.07, zcb, qcb*1.07, E_cb, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-        allocate_output()
-    )
-
+        allocate_output() )
     qplus7pct = Experiment(
-        "q&qs+7%",
-        "q and qs + 7%, subsidence - 5%, RH=control",
+        "q&qs+7%", "q and qs +7%, subsidence-5%, RH=control",
         ModelInput(qm*1.07, qs*1.07, zcb, qcb*1.07, E_cb, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-        allocate_output()
-    )
-
+        allocate_output() )
     ecbplus2pct = Experiment(
-        "Ecb+2%",
-        "E_cb + 2%, q,qs + 7%, subsidence - 5%",
+        "Ecb+2%", "E_cb + 2%, q&qs+7%, subsidence-5%",
         ModelInput(qm*1.07, qs*1.07, zcb, qcb*1.07, E_cb*1.02, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-        allocate_output()
-    )
-
-    qm_ = @. (1 - 0.95*(1-qm/qs)) * qs * 1.07
+        allocate_output() )
+    qm_new = @. (1 - 0.95*(1-qm/qs)) * qs * 1.07
     cRHminus5pct = Experiment(
-        "(1-RH)-5%",
-        "subcloud (1-RH) - 5%, E_cb + 2%, q,qs + 7%, subsidence - 5%",
-        ModelInput(qm_, qs*1.07, zcb, qcb*1.07, E_cb*1.02, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-        allocate_output()
-    )
+        "(1-RH)-5%", "subcloud (1-RH)-5%, E_cb+2%, q&qs+7%, subsidence-5%",
+        ModelInput(qm_new, qs*1.07, zcb, qcb*1.07, E_cb*1.02, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
+        allocate_output() )
+    DIM = Experiment(
+        "DIM", "Descent Inhibited Moisture Flux; a_i-5%, (1-RH)-5%, E_cb+2%, q&qs+7%, subsidence-5%",
+        ModelInput(qm_new, qs*1.07, zcb, qcb*1.07, E_cb*1.02, x, divg*0.95, tot_sink, cth_bin, 0.95*rfv_acc, 0.95*rfv_nrm),
+        allocate_output() )
 
     # experiment dictionary for looping, and defining short names
     ExpDict = Dict(
@@ -225,7 +213,8 @@ function define_experiments(; ctx::ModelContext)
         "qs+7%" => qsplus7pct,
         "q&qs+7%" => qplus7pct,
         "Ecb+2%" => ecbplus2pct,
-        "(1-RH)-5%" => cRHminus5pct
+        "(1-RH)-5%" => cRHminus5pct,
+        "DIM" => DIM
     )
 end
 
@@ -288,12 +277,28 @@ function calc_Ftot(; ctx::ModelContext,
     return F2z, G
 end
 
+"""
+    get_sinkrate( exp::Experiment; ctx::ModelContext )
+get total sink rate for each z level by finding the contour of 
+qcld - qs = 0, which is the cloud top height for each sink rate.
+"""
+function get_sinkrate( exp::Experiment; ctx::ModelContext )
+    sinkz = NaN .+ zeros(length(ctx.z)) # fill a vector with NaN
+    iz = findall(exp.input.zcb .<= ctx.z .<= 3500.0) # valid cloud tops
+    qd = (exp.output.qc .- exp.input.qs)[iz,:]
+    # update sinkz
+    TradeCuModel.find_contour!(@view(sinkz[iz]), exp.input.tot_sink, permutedims(qd), 0.0)
+    # (sinkz, ctx.z) gives the sink rate as function of cloud top.
+    return sinkz
+end
+
 "integrate an experiment based on inputs, modify output in place"
 function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     z = ctx.z
     dz = ctx.dz
 
     # compute cloud+precipitation moisture flux that balances large scale drying
+    # ! independent of clouds !
     F2z, G_ls = calc_Ftot( ctx=ctx, E_cb=exp.input.E_cb, divg=exp.input.divg,
         qm=exp.input.qm, 
         cth_bin=exp.input.cth_bin, cth_acc=exp.input.cth_acc, 
@@ -301,6 +306,7 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     # Flux is distributed to the clouds by their cloud top height distribution.
 
     # run the cloud model for many sink rates
+    # ! qcld is independent of fluxes !
     zt, F_cld, F_pcp, qcld = cloudflux_1x(
         exp.input.tot_sink; x=exp.input.x, 
         z=z, nz=length(z), 
@@ -309,6 +315,7 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
         F2z=F2z, icb=findfirst(z .>= exp.input.zcb), 
         qcb=exp.input.qcb )
 
+    # get sink rate as a function of cloud top height
     # postprocess to get w, a, M, ...
     w, _ = updraft_w_dq(F_cld, qcld, exp.input.qm, z, zt)
     # print("size(w): $(size(w))") # nz, ns = (3100, 600)
@@ -408,18 +415,28 @@ display(gcf())
 
 # get sink rate as a function of cloud top height
 exp = ExpDict["control"]
-iz = findall(ctx.zcb .<= ctx.z .<= ctx.ztop)
-sinkz = NaN .+ zeros(length(ctx.z)) # fill a vector with NaN
-TradeCuModel.find_contour!(sinkz[iz], exp.input.tot_sink,
-    permutedims((exp.output.qc.-exp.input.qs)[iz,:]), 0.0)
-plot(sinkz, ctx.z, "k"); display(gcf())
-
-q = permutedims(exp.output.qc.-exp.input.qs)
-# sinkz = similar(ctx.z, Union{eltype(ctx.z), Missing})
-sinkz = NaN .+ zeros(length(ctx.z)) # fill a vector with NaN
-iz = findall(ctx.zcb .<= ctx.z .<= ctx.ztop)
-TradeCuModel.find_contour!(@view(sinkz[iz]), exp.input.tot_sink, q[:,iz], 0.0)
+sinkz = get_sinkrate( exp; ctx=ctx )
 plot(sinkz, ctx.z, "k"); display(gcf())
 # Now sinkz and ctx.z are 1 to 1, and 75:302 are valid low clouds.
 # Map these to the cloud top height distribution 
 # to get the cloud fraction for each of the interpolated sink rates in sinkz.
+
+function define_control_sink_experiment(; ctx::ModelContext, sinkz=sinkz)
+    ( qm, qs, zcb, qcb, E_cb, x, divg, 
+        tot_sink, cth_bin, rfv_acc, rfv_nrm, 
+        rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx)
+
+    allocate_output() = ModelOutput( 
+        Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
+        Vector{Union{Missing, Float64}}(missing,    ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
+        Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
+        Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns) )
+
+    control_sink = Experiment(
+            "control", "Control",
+            ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, sinkz, cth_bin, rfv_acc, rfv_nrm),
+            allocate_output() )
+end
+# tot_sink now matches cloud top height at each z
+control_sink = define_control_sink_experiment(ctx=ctx, sinkz=sinkz)
+integrate_experiment!(control_sink, ctx=ctx)
