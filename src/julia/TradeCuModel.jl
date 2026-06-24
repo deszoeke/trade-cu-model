@@ -4,7 +4,8 @@ module TradeCuModel
 using Revise # does using Revise first allow for revising code in ATOMIC_GOES???
 using Pkg
 # Pkg.activate(joinpath(homedir(), "Projects/ATOMIC/ATOMIC_GOES/julia/ATOMIC_GOES"))
-cd("/Users/deszoeks/Projects/ATOMIC/trade-cu-model/src/julia")
+joinpath(homedir(), "projects/ATOMIC/trade-cu-model/src/julia") |> p-> ispath(p) && cd(p)
+joinpath(homedir(), "Projects/ATOMIC/trade-cu-model/src/julia") |> p-> ispath(p) && cd(p)
 Pkg.activate(".")
 
 using Printf
@@ -224,11 +225,9 @@ calc_rhoL(T, p) = p/(Rd*T) * LvK(T) # should use Tv in p/(Rd*T) but T in LvK
 virtual_temp(t,q) = t * (1 + 0.608*q)
 
 # functions for getting sounding data
-function get_sounding_dataset(; datapath = joinpath(homedir(),"Data/ATOMIC/radiosonde/level2"))
-    # readdir(datapath)
-    ncfile = filter(
-        x->startswith(x,"EUREC4A_RonBrown") && endswith(x,"Vaisala-RS_L2_v3.0.0.nc"), 
-        readdir(datapath))
+function get_sounding_dataset(; datapath="../../data/radiosonde/level2")
+    ncfile = filter( x->startswith(x,"EUREC4A_RonBrown") && endswith(x,"Vaisala-RS_L2_v3.0.0.nc"), 
+        readdir(datapath) )
     ds = NCDataset( joinpath(datapath, ncfile[1]) )
 end
 
@@ -283,7 +282,7 @@ end
 
 # get An-Yi's aggregated GOES cloud fraction vs height data
 function get_goes_cloud_data()
-    NCDataset("../../data/goes16_binned_low4km_20200115_20200219.nc") do dsa
+    NCDataset("../../data/satellite/GOES-16/goes16_binned_low4km_20200115_20200219.nc") do dsa
         rfv_nrm = mean(dsa[:rfv_nrm][:,:], dims=2)[:]
         rfv_acc = mean(dsa[:rfv_acc][:,:], dims=2)[:]
         cth_bin = dsa[:cth_bin][:]

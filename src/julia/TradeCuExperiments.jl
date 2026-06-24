@@ -1,6 +1,7 @@
 # environment and code loading header
 using Revise
-cd(joinpath(homedir(), "Projects/ATOMIC/trade-cu-model/src/julia"))
+joinpath(homedir(), "projects/ATOMIC/trade-cu-model/src/julia") |> p-> ispath(p) && cd(p)
+# joinpath(homedir(), "Projects/ATOMIC/trade-cu-model/src/julia") |> p-> ispath(p) && cd(p)
 using Pkg; Pkg.activate(".")
 includet("TradeCuModel.jl")
 
@@ -346,11 +347,11 @@ end # module TradeCuExperiments
 using .TradeCuExperiments
 
 # run all the experiments and fill the output structures
-ctx = init_context()
-ExpDict = define_experiments(ctx=ctx)
+ctx = TradeCuExperiments.init_context()
+ExpDict = TradeCuExperiments.define_experiments(ctx=ctx)
 for exp in values(ExpDict)
     println(exp.name)
-    integrate_experiment!(exp, ctx=ctx)
+    TradeCuExperiments.integrate_experiment!(exp, ctx=ctx)
 end
 
 println("Experiment names: $(keys(ExpDict))")
