@@ -1,8 +1,9 @@
 # environment and code loading header
-using Revise
-joinpath(homedir(), "projects/ATOMIC/trade-cu-model/src/julia") |> p-> ispath(p) && cd(p)
-# joinpath(homedir(), "Projects/ATOMIC/trade-cu-model/src/julia") |> p-> ispath(p) && cd(p)
-using Pkg; Pkg.activate(".")
+# using Revise
+# joinpath(homedir(), "projects/ATOMIC/trade-cu-model/src/julia") |> p-> ispath(p) && cd(p)
+# # joinpath(homedir(), "Projects/ATOMIC/trade-cu-model/src/julia") |> p-> ispath(p) && cd(p)
+# using Pkg; Pkg.activate(".") # may be superfluous if opening julia --project in local folder
+
 includet("TradeCuModel.jl")
 
 using PythonPlot
@@ -41,6 +42,8 @@ export ExpDict # dictionary contains defined experiments
 export init_context, define_experiments
 export integrate_experiment!
 export get_sinkrate
+# temporarily export more to experiment in outside environment
+export setup_experiments
 
 # Define the Inputs Container
 struct ModelInput
@@ -164,48 +167,48 @@ function setup_experiments(; ctx::ModelContext)
         rhoL, E_cb, qcb, ns, nz )
 end
 
+allocate_output(nz,ns) = ModelOutput( 
+    Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
+    Vector{Union{Missing, Float64}}(missing,    ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
+    Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
+    Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns) )
+
 "initialize experiments with input parameters and empty output structures"
 function define_experiments(; ctx::ModelContext)
     ( qm, qs, zcb, qcb, E_cb, x, divg, 
         tot_sink, cth_bin, rfv_acc, rfv_nrm, 
         rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx)
-
-    allocate_output() = ModelOutput( 
-        Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-        Vector{Union{Missing, Float64}}(missing,    ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-        Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-        Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns) )
         
     # initialize experiment input and output structures
     control = Experiment(
         "control", "Control",
         ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-        allocate_output() )
+        allocate_output(nz,ns) )
     subsminus5pct = Experiment(
         "subsidence-5%", "LS subsidence-5%",
         ModelInput(qm, qs, zcb, qcb, E_cb, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-        allocate_output() )
+        allocate_output(nz,ns) )
     qsplus7pct = Experiment(
         "qs+7%", "qs+7%, LS subsidence-5%, LOW RH!",
         ModelInput(qm, qs*1.07, zcb, qcb*1.07, E_cb, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-        allocate_output() )
+        allocate_output(nz,ns) )
     qplus7pct = Experiment(
         "q&qs+7%", "q and qs +7%, subsidence-5%, RH=control",
         ModelInput(qm*1.07, qs*1.07, zcb, qcb*1.07, E_cb, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-        allocate_output() )
+        allocate_output(nz,ns) )
     ecbplus2pct = Experiment(
         "Ecb+2%", "E_cb + 2%, q&qs+7%, subsidence-5%",
         ModelInput(qm*1.07, qs*1.07, zcb, qcb*1.07, E_cb*1.02, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-        allocate_output() )
+        allocate_output(nz,ns) )
     qm_new = @. (1 - 0.95*(1-qm/qs)) * qs * 1.07
     cRHminus5pct = Experiment(
         "(1-RH)-5%", "subcloud (1-RH)-5%, E_cb+2%, q&qs+7%, subsidence-5%",
         ModelInput(qm_new, qs*1.07, zcb, qcb*1.07, E_cb*1.02, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-        allocate_output() )
+        allocate_output(nz,ns) )
     DIM = Experiment(
         "DIM", "Descent Inhibited Moisture Flux; a_i-5%, (1-RH)-5%, E_cb+2%, q&qs+7%, subsidence-5%",
         ModelInput(qm_new, qs*1.07, zcb, qcb*1.07, E_cb*1.02, x, divg*0.95, tot_sink, cth_bin, 0.95*rfv_acc, 0.95*rfv_nrm),
-        allocate_output() )
+        allocate_output(nz,ns) )
 
     # experiment dictionary for looping, and defining short names
     ExpDict = Dict(
@@ -217,6 +220,30 @@ function define_experiments(; ctx::ModelContext)
         "(1-RH)-5%" => cRHminus5pct,
         "DIM" => DIM
     )
+end
+
+function define_control_sink_experiment(; ctx::ModelContext, sinkz=sinkz)
+    ( qm, qs, zcb, qcb, E_cb, x, divg, 
+        tot_sink, cth_bin, rfv_acc, rfv_nrm, 
+        rhoL, E_cb, qcb, ns, nz ) = TradeCuExperiments.setup_experiments(ctx=ctx)
+
+    return Experiment(
+            "control-sink", "Control for setting compact set of sink rates",
+            ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, sinkz, cth_bin, rfv_acc, rfv_nrm),
+            TradeCuExperiments.allocate_output(nz,ns) )
+end
+
+function cloud_i_area( ctx )
+    z=ctx.z
+    nz = length(ctx.z)
+    cth_bin=ctx.cth_bin
+    rfv_acc=ctx.rfv_acc
+    # align z grid with fractions
+    offset = findfirst(x->x≈cth_bin[1]*1e3, z) - 1 # offset for 10 m bins
+    a_i = zeros(nz)
+    # cloud with qc=0 at h_i diverges below between h_(i-1) and h_i
+    a_i[offset+1 .+ eachindex(rfv_acc[1:end-1])] .= -diff(rfv_acc)
+    return a_i
 end
 
 "large scale moisture flux profile distributed to clouds top height bins"
@@ -343,104 +370,3 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
 end
 
 end # module TradeCuExperiments
-
-using .TradeCuExperiments
-
-# run all the experiments and fill the output structures
-ctx = TradeCuExperiments.init_context()
-ExpDict = TradeCuExperiments.define_experiments(ctx=ctx)
-for exp in values(ExpDict)
-    println(exp.name)
-    TradeCuExperiments.integrate_experiment!(exp, ctx=ctx)
-end
-
-println("Experiment names: $(keys(ExpDict))")
-println("ctx: $(fieldnames(typeof(ctx)))")
-control = ExpDict["control"]
-println("control.input: $(fieldnames(typeof(control.input)))")
-println("control.output: $(fieldnames(typeof(control.output)))")
-
-keyorder = [
-  "control", 
-  "subsidence-5%",
-  "qs+7%",
-  "q&qs+7%",
-  "Ecb+2%",
-  "(1-RH)-5%",
-  "DIM" ]
-
-PythonPlot.matplotlib.pyplot.close("all")
-figure()
-colrs = ["C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9"]
-for (i,k) in enumerate(keyorder)
-    exp = ExpDict[k]
-    plot( 1e3*exp.input.qm, 1e-3*ctx.z, linewidth=0.5, label=k, color=colrs[i] )
-    plot( 1e3*exp.input.qs, 1e-3*ctx.z, linewidth=0.5, color=colrs[i] )
-end
-legend(frameon=false)
-ylim([0, 4])
-xlabel("specific humidity (g/kg)")
-ylabel("z (km)")
-display(gcf())
-
-# contour the cloud profiles as a function of sink rate
-PythonPlot.matplotlib.pyplot.close("all")
-figure()
-all_ql = vcat([vec(1e3 .* coalesce.(max.(0, ExpDict[k].output.qc .- ExpDict[k].input.qs), NaN)) for k in keyorder]...)
-finite_vals = filter(isfinite, all_ql)
-vmax = isempty(finite_vals) ? 1.0 : maximum(finite_vals)
-norm = PythonPlot.matplotlib.colors.Normalize(vmin=0.0, vmax=vmax)
-for (i,k) in enumerate(keyorder[[1, 2, 3, 4, 5, 6]])
-    exp = ExpDict[k]
-    ql = max.(0, exp.output.qc .- exp.input.qs)
-    ql_plot = 1e3 .* coalesce.(ql, NaN)
-    contour(exp.input.tot_sink, 1e-3*ctx.z, ql_plot,
-        colors=colrs[i], norm=norm, vmin=0.0, vmax=vmax)
-    plot([-1, -2], [-1, -2], color=colrs[i], label=k)
-end
-# colorbar()
-ylim([0, 4])
-xlim([minimum(control.input.tot_sink), maximum(control.input.tot_sink)])
-xlabel("sink rate (km\$^{-1}\$)")
-ylabel("z (km)")
-legend(frameon=false)
-display(gcf())
-
-# anther way to experiment is to keep the control distribution of
-# sink rates, and recompute the clouds
-
-# The clouds don't depend on the fluxes at all.
-# So we can integrate the clouds separately,
-# find the sink rates that give clouds of each height,
-# assign fractions to these from the obseved 
-# cloud top height and 
-# partition the large-scale moisture flux to the cloud flux.
-# Then finally calculate the cloud fluxes, mass fluxes, and velocities.
-
-# get sink rate as a function of cloud top height
-exp = ExpDict["control"]
-sinkz = get_sinkrate( exp; ctx=ctx )
-plot(sinkz, ctx.z, "k"); display(gcf())
-# Now sinkz and ctx.z are 1 to 1, and 75:302 are valid low clouds.
-# Map these to the cloud top height distribution 
-# to get the cloud fraction for each of the interpolated sink rates in sinkz.
-
-function define_control_sink_experiment(; ctx::ModelContext, sinkz=sinkz)
-    ( qm, qs, zcb, qcb, E_cb, x, divg, 
-        tot_sink, cth_bin, rfv_acc, rfv_nrm, 
-        rhoL, E_cb, qcb, ns, nz ) = TradeCuExperiments.setup_experiments(ctx=ctx)
-
-    allocate_output() = ModelOutput( 
-        Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-        Vector{Union{Missing, Float64}}(missing,    ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-        Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-        Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns) )
-
-    control_sink = Experiment(
-            "control", "Control",
-            ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, sinkz, cth_bin, rfv_acc, rfv_nrm),
-            allocate_output() )
-end
-# tot_sink now matches cloud top height at each z
-control_sink = define_control_sink_experiment(ctx=ctx, sinkz=sinkz)
-@invokelatest integrate_experiment!(control_sink, ctx=ctx)

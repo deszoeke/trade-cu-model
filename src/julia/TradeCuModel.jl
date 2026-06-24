@@ -552,7 +552,7 @@ where q=c for each y in the grid. X_out has dimensions of y.
 """
 function find_contour!(X_out, x, q, c)
     Nx, Ny = size(q)
-    peaks = [argmax([isnan(v) || ismissing(v) ? -Inf : v for v in q[i, :]]) for i in 1:Nx]
+    peaks = [argmax([ismissing(v) || isnan(v) ? -Inf : v for v in q[i, :]]) for i in 1:Nx]
 
     for j in 1:Ny
         idx = searchsortedlast(reverse(@view q[:, j]), c)
