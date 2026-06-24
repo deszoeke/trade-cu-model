@@ -6,7 +6,8 @@ Manifest.toml
 *.svg
 *.eps
 
-# directories
+# directories or symlinks
+data
 data/
 proj_data/
 
