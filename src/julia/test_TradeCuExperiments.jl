@@ -1,31 +1,5 @@
 # using REPL
-# REPL.activate(TradeCuExperiments) # steps in to module
-
-# functions added to the module
-# function define_control_sink_experiment(; ctx::ModelContext, sinkz=sinkz)
-#     ( qm, qs, zcb, qcb, E_cb, x, divg, 
-#         tot_sink, cth_bin, rfv_acc, rfv_nrm, 
-#         rhoL, E_cb, qcb, ns, nz ) = TradeCuExperiments.setup_experiments(ctx=ctx)
-
-#     return Experiment(
-#             "control-sink", "Control for setting compact set of sink rates",
-#             ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, sinkz, cth_bin, rfv_acc, rfv_nrm),
-#             TradeCuExperiments.allocate_output(nz,ns) )
-# end
-
-# function cloud_i_area( ctx )
-#     z=ctx.z
-#     nz = length(ctx.z)
-#     cth_bin=ctx.cth_bin
-#     rfv_acc=ctx.rfv_acc
-#     # align z grid with fractions
-#     offset = findfirst(x->x≈cth_bin[1]*1e3, z) - 1 # offset for 10 m bins
-#     a_i = zeros(nz)
-#     # cloud with qc=0 at h_i diverges below between h_(i-1) and h_i
-#     a_i[offset+1 .+ eachindex(rfv_acc[1:end-1])] .= -diff(rfv_acc)
-#     return a_i
-# end
-
+# REPL.activate(TradeCuExperiments) # steps in to module scope
 using Revise
 using Debugger
 
@@ -205,21 +179,46 @@ integrate_experiment!(controlsink, ctx=ctx) # doesn't work with sinkz
 
 end
 
+"plot cloud vertical velocity for an experiment"
 function plot_exp_w(e, ctx=ctx)
-    pcolormesh(ctx.z[51:350]/1e3,ctx.z[51:350]/1e3, e.output.w[51:350,51:350], cmap=ColorMap("BuPu"))
+    pcolormesh(ctx.z[51:350]/1e3,ctx.z[51:350]/1e3, e.output.w[51:350,51:350], 
+        cmap=ColorMap("BuPu"), vmin=0.0, vmax=1.2)
     colorbar()
-    ylim([0.5, 3.0]); xlim([0.5, 3.0])
+    ylim([0.5, 3.5]); xlim([0.5, 3.5])
     xlabel("cloud top height (km)")
     ylabel("z coordinate (km)")
     title("cloud vertical velocity (m/s)")
+    gca().set_aspect("equal")
+    tight_layout()
 end
 
 # experiment with sink rate fixed by the control
-controlsink, ctx, ExpDict = TradeCuExperiments.test_control_sink()
+ctx, ExpDict, controlsink, sinkm5, sinkp5 = TradeCuExperiments.test_control_sink()
 
 PythonPlot.matplotlib.rcParams["font.family"] = "sans-serif"
 PythonPlot.matplotlib.rcParams["font.sans-serif"] = ["Helvetica", "Arial", "OpenSans"]
-clf(); subplot(2,2,1)
+clf() 
+subplot(2,3,1)
 plot_exp_w(controlsink)
+plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
+title("control sink rate")
+gca().set_aspect("equal")
+subplot(2,3,2)
+plot_exp_w(sinkm5)
+plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
+title("sink rate -5%")
+gca().set_aspect("equal")
+subplot(2,3,3)
+plot_exp_w(sinkp5)
+plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
+title("sink rate +5%")
+gca().set_aspect("equal")
+suptitle("cloud vertical velocity (m/s)")
+tight_layout()
 
-sinkz = TradeCuExperiments.get_sinkrate( controlsink; ctx )
+for f in ["png", "pdf", "svg"]
+    savefig("experiment_cloud_vertical_velocity.$f")
+end
+
+# sinkz = TradeCuExperiments.get_sinkrate( controlsink; ctx ) #no
+sinkz = controlsink.input.tot_sink

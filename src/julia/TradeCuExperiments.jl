@@ -404,6 +404,11 @@ function test_control_sink()
     # debug this:
     integrate_experiment!(controlsink, ctx=ctx) # doesn't work with sinkz in controlsink
 
+    sinkm5 = define_control_sink_experiment(ctx=ctx, sinkz=0.95*sinkz)
+    sinkp5 = define_control_sink_experiment(ctx=ctx, sinkz=1.05*sinkz)
+    integrate_experiment!(sinkm5, ctx=ctx) # doesn't work with sinkz in controlsink
+    integrate_experiment!(sinkp5, ctx=ctx) # doesn't work with sinkz in controlsink
+
     # The clouds don't depend on the fluxes at all.
     # Another way to experiment is to keep the control distribution of
     # sink rates, and recompute the clouds
@@ -414,7 +419,7 @@ function test_control_sink()
     # cloud top height and 
     # partition the large-scale moisture flux to the cloud flux.
     # Then finally calculate the cloud fluxes, mass fluxes, and velocities.
-    return controlsink, ctx, ExpDict
+    return ctx, ExpDict, controlsink, sinkm5, sinkp5
 end
 
 end # module TradeCuExperiments
