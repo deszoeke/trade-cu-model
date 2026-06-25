@@ -56,6 +56,9 @@ end
 include("TradeCuExperiments.jl")
 using .TradeCuExperiments
 
+# this crazy let block isolates the executing scope and evaluates in module TradeCuExperiments
+@eval TradeCuExperiments begin 
+
 # run all the experiments and fill the output structures
 ctx = init_context()
 ExpDict = define_experiments(ctx=ctx)
@@ -80,7 +83,6 @@ keyorder = [
   "(1-RH)-5%",
   "DIM" ]
 
-#=
 # plot figures of results
 close("all")
 figure()
@@ -118,7 +120,6 @@ xlabel("sink rate (km\$^{-1}\$)")
 ylabel("z (km)")
 legend(frameon=false)
 display(gcf())
-=#
 
 # The clouds don't depend on the fluxes at all.
 # Another way to experiment is to keep the control distribution of
@@ -144,7 +145,7 @@ a_i = cloud_i_area( ctx )
 # test the compact sink rates
 # insert sinkz in as the total sink rate
 controlsink = define_control_sink_experiment(ctx=ctx, sinkz=sinkz)
-# this fails:
+# debug this:
 integrate_experiment!(controlsink, ctx=ctx) # doesn't work with sinkz
 
 # function integrate_experiment_sinkz!(exp::Experiment; ctx::ModelContext)
@@ -201,3 +202,24 @@ integrate_experiment!(controlsink, ctx=ctx) # doesn't work with sinkz
 # area fractions, not testing TradeCuExperiments
 # maximum(ctx.rfv_acc) - ctx.rfv_acc[findlast(ctx.cth_bin .< 1.2)] # 1.4 %
 # maximum(ctx.rfv_acc) - ctx.rfv_acc[findlast(ctx.cth_bin .< 1.0)] # 1.9 %
+
+end
+
+function plot_exp_w(e, ctx=ctx)
+    pcolormesh(ctx.z[51:350]/1e3,ctx.z[51:350]/1e3, e.output.w[51:350,51:350], cmap=ColorMap("BuPu"))
+    colorbar()
+    ylim([0.5, 3.0]); xlim([0.5, 3.0])
+    xlabel("cloud top height (km)")
+    ylabel("z coordinate (km)")
+    title("cloud vertical velocity (m/s)")
+end
+
+# experiment with sink rate fixed by the control
+controlsink, ctx, ExpDict = TradeCuExperiments.test_control_sink()
+
+PythonPlot.matplotlib.rcParams["font.family"] = "sans-serif"
+PythonPlot.matplotlib.rcParams["font.sans-serif"] = ["Helvetica", "Arial", "OpenSans"]
+clf(); subplot(2,2,1)
+plot_exp_w(controlsink)
+
+sinkz = TradeCuExperiments.get_sinkrate( controlsink; ctx )

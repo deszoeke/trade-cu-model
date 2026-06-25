@@ -44,6 +44,8 @@ export integrate_experiment!
 export get_sinkrate
 # temporarily export more to experiment in outside environment
 export setup_experiments
+export cloud_i_area
+export test_control_sink
 
 # Define the Inputs Container
 struct ModelInput
@@ -230,7 +232,7 @@ function define_control_sink_experiment(; ctx::ModelContext, sinkz=sinkz)
     return Experiment(
             "control-sink", "Control for setting compact set of sink rates",
             ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, sinkz, cth_bin, rfv_acc, rfv_nrm),
-            TradeCuExperiments.allocate_output(nz,ns) )
+            TradeCuExperiments.allocate_output(nz,nz) ) # note nz,nz
 end
 
 function cloud_i_area( ctx )
@@ -313,9 +315,10 @@ qcld - qs = 0, which is the cloud top height for each sink rate.
 function get_sinkrate( exp::Experiment; ctx::ModelContext )
     sinkz = NaN .+ zeros(length(ctx.z)) # fill a vector with NaN
     iz = findall(exp.input.zcb .<= ctx.z .<= 3500.0) # valid cloud tops
-    qd = (exp.output.qc .- exp.input.qs)[iz,:]
+    ii = findall(isfinite, exp.input.tot_sink)
+    qd = (exp.output.qc .- exp.input.qs)[iz,ii]
     # update sinkz
-    TradeCuModel.find_contour!(@view(sinkz[iz]), exp.input.tot_sink, permutedims(qd), 0.0)
+    TradeCuModel.find_contour!(@view(sinkz[iz]), exp.input.tot_sink[ii], permutedims(qd), 0.0)
     # (sinkz, ctx.z) gives the sink rate as function of cloud top.
     return sinkz
 end
@@ -356,7 +359,7 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     da_dsink, da_ind = dadsinkrate(zt, exp.input.tot_sink, exp.input.cth_bin, exp.input.cth_nrm)
     acld = ctx.dsink * da_dsink # cloud area fraction in sink rate bin
 
-    println("size(w)=$(size(w))")
+    println("size(w)=$(size(w))") # (3100, 600) or (3100, 3100)
     exp.output.w .= w
     exp.output.acld[da_ind] .= acld
     exp.output.M[:,da_ind] .= w[:,da_ind] .* acld' # mass flux per sink rate
@@ -367,6 +370,51 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     exp.output.G_pcp[:,da_ind] .= F_pcp[:,da_ind] .* acld'
 
     return nothing
+end
+
+
+# TESTS
+"""
+inject this exeriment function within TradeCuExperiments module
+to test the sink rate setting experiment.
+"""
+function test_control_sink()
+    # run all the experiments and fill the output structures
+    ctx = init_context()
+    ExpDict = define_experiments(ctx=ctx)
+    for exp in values(ExpDict) # run all the defined experiments
+        println(exp.name)
+        integrate_experiment!(exp, ctx=ctx)
+    end
+
+    # experiment hierarchy
+    keyorder = [
+    "control", 
+    "subsidence-5%",
+    "qs+7%",
+    "q&qs+7%",
+    "Ecb+2%",
+    "(1-RH)-5%",
+    "DIM" ]
+
+    # get sink rate ss a function of cloud top height from control
+    sinkz = get_sinkrate( ExpDict["control"]; ctx=ctx )
+    a_i = cloud_i_area( ctx )
+    controlsink = define_control_sink_experiment(ctx=ctx, sinkz=sinkz)
+    # debug this:
+    integrate_experiment!(controlsink, ctx=ctx) # doesn't work with sinkz in controlsink
+
+    # The clouds don't depend on the fluxes at all.
+    # Another way to experiment is to keep the control distribution of
+    # sink rates, and recompute the clouds
+
+    # So we can integrate the clouds separately,
+    # find the sink rates that give clouds of each height,
+    # assign fractions to these from the obseved 
+    # cloud top height and 
+    # partition the large-scale moisture flux to the cloud flux.
+    # Then finally calculate the cloud fluxes, mass fluxes, and velocities.
+    return controlsink, ctx, ExpDict
 end
 
 end # module TradeCuExperiments
