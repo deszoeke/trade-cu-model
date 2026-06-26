@@ -2,6 +2,12 @@
 *
 CLAUDE.md
 .graphifyignore
+*.toml
+
+# plots
+*.svg
+*.png
+*.pdf
 
 # Whitelist .jl
 !*.jl
