@@ -30,15 +30,16 @@ datadir = "../../../ATOMIC_GOES/data/"
 
 #     g = cth_km > 6.0 ? 0.75 : 0.85
 #     # gamma_1 = 0.75 * (1.0 - (g * mu_0))
-#     Coakley-Chylek 2-stream approximation for cloud albedo:
+#     # Coakley-Chylek 2-stream approximation for cloud albedo:
 #     u = 0.75 * (1.0 - g)
 #     alpha_cloud = alpha_cloud = (u * tau) / (u * tau + mu_0)
-#     ISCCP method for multiple scattering
+#     # ISCCP method for multiple scattering
 #     b = 6.8 * mu_0          # approximate ISCCP coefficient
-#     alpha_cloud = tau^0.75 / (tau^0.75 + b)
+#     tp = sqrt(sqrt(tau^3)) # tau^0.75
+#     alpha_cloud = tp / (tp + b) # power is 0.75 for liquid clouds?
 #     # ISCCP from Zelinka
-#     tp = τ^0.895
-#     αc = tp∕(tp + 6.82),
+#     # tp = τ^0.895 # why is it different from 0.75 above?
+#     # αc = tp∕(tp + 6.82),
 #     if alpha_cloud <= alpha_surface return 0.0 end
 #     return clamp((alpha_obs - alpha_surface) / (alpha_cloud - alpha_surface), 0.0, 1.0)
 # end
@@ -133,7 +134,7 @@ end
 function compile_isccp_histogram(lat_bounds, lon_bounds, data_file_list)
     #tau_edges = [0.0, 0.3, 1.3, 3.6, 9.4, 23.0, 60.0, 1000.0]
     #pc_edges  = [10.0, 180.0, 310.0, 440.0, 560.0, 680.0, 800.0, 1000.0]
-    # Zelinke kernel bin edges:
+    # Zelinka kernel bin edges:
     tau_edges = [0.01, 0.3, 1.3, 3.6, 9.4, 23, 60, 380]
     pc_edges = reverse(float([1000, 800, 680, 560, 440, 310, 180, 50]))
 
