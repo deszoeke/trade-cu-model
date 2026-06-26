@@ -413,13 +413,13 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     
     # run the cloud model for many sink rates
     # ! qcld is independent of fluxes !
-    zt, F_cld, F_pcp, qcld = cloudflux_1x(
-        exp.input.tot_sink; x=exp.input.x, 
-        z=z, nz=length(z), 
-        dz=z[2]-z[1],
-        qm=exp.input.qm, qs=exp.input.qs, 
-        F2z=F2z, icb=findfirst(z .>= exp.input.zcb), 
-        qcb=exp.input.qcb )
+    # zt, F_cld, F_pcp, qcld = cloudflux_1x(
+    #     exp.input.tot_sink; x=exp.input.x, 
+    #     z=z, nz=length(z), 
+    #     dz=z[2]-z[1],
+    #     qm=exp.input.qm, qs=exp.input.qs, 
+    #     F2z=F2z, icb=findfirst(z .>= exp.input.zcb), 
+    #     qcb=exp.input.qcb )
 
     ztop, F_cld, F_pcp, qcld, acld = cloudflux_allsky(tot_sink=tot_sink; x=x, 
         z, nz=length(z), dz=z[2]-z[1],
