@@ -63,6 +63,8 @@ end
 # experiment with sink rate fixed by the control
 # ctx, ExpDict, controlsink, sinkm5, sinkp5 = TradeCuExperiments.test_control_sink() # not needed in REPL
 ctx, ExpDict, controlsink, sinkm5, sinkp5 = test_control_sink()
+sinkz = controlsink.input.tot_sink
+a_i = cloud_i_area( ctx )
 
 # plot cloud w
 clf() 
@@ -110,10 +112,6 @@ for f in ["png", "pdf", "svg"]
     savefig("experiment_cloud_liquid.$f")
 end
 
-# sinkz = TradeCuExperiments.get_sinkrate( controlsink; ctx ) #no
-sinkz = controlsink.input.tot_sink
-a_i = cloud_i_area( ctx )
-
 """
 power law on log-log plot
 y = y0 * (x/x0)^p
@@ -140,3 +138,27 @@ loglog(     sinkz, a_i)
 loglog(0.95*sinkz, a_i, ":")
 loglog(1.05*sinkz, a_i, ":")
 # Cloud fraction is so small at the low-sink end that no extrapolation is recommended.
+
+# plot sink rate conditions for mesoscale experiments
+clf()
+subplot(2,2,1)
+plot(1e3*controlsink.input.tot_sink, ctx.z/1e3, marker=".", linestyle="none", label="control")
+plot(1e3*sinkm5.input.tot_sink, ctx.z/1e3, marker=".", linestyle="none", label="total sink -5%")
+plot(1e3*sinkp5.input.tot_sink, ctx.z/1e3, marker=".", linestyle="none", label="total sink +5%")
+plot(1e4*a_i[1:401], ctx.z[1:401]/1e3, "k", label=L"a_i")
+legend( frameon=false )
+ylabel("cloud top height (km)")
+xlabel("total sink rate (km\$^{-1}\$)")
+xlim([0, 6]); ylim([0, 3.5])
+title("cloud top height vs. sink rate")
+
+subplot(2,2,2)
+plot(1e3*controlsink.input.tot_sink, 1e3*a_i, label="control")
+plot(1e3*sinkm5.input.tot_sink, 1e3*a_i, label="total sink -5%")
+plot(1e3*sinkp5.input.tot_sink, 1e3*a_i, label="total sink +5%")
+title("cloud fraction vs. sink rate")
+xlabel("total sink rate (km\$^{-1}\$)")
+ylabel("cloud fraction (10\$^{-3}\$)")
+xlim([0, 6])
+tight_layout()
+suptitle("sink rates for mesoscale experiments")
