@@ -371,6 +371,17 @@ function interpolate_descending( X::AbstractVector{<:Real}, Y::AbstractVector{<:
     return itp
 end
 
+"returns a function that interpolates y(x) from vectors X, Y with X ascending"
+function interpolate_ascending( X::AbstractVector{<:Real}, Y::AbstractVector{<:Real} )
+    function itp(x)
+        # strictly NaN true out-of-bounds inputs
+        x > X[1] || x < X[end] && return NaN
+        # search for ascending vector order
+        j = clamp(searchsortedfirst(X, x), 1, length(X)-1) # clamped to data intervals [1, N-1]
+        bilinear(X[j],X[j+1], Y[j],Y[j+1], x)
+    end
+    return itp
+end
 """
 sinkz = interp_sinkrate( expmt; ctx )
 interpolate the sink rate for cloud top height at the model z grid.
@@ -380,7 +391,6 @@ function interp_sinkrate( e::Experiment; ctx::ModelContext )
     tot_sink = e.input.tot_sink
     qd = e.output.qc .- e.input.qs
     ztop = interp_cloudtop_height(z, qd) # ztop is in descending order
-    
     ii = !ismissing.(ztop) # filter missing, let NaN thru
     sinkz = interpolate_descending(ztop[ii], tot_sink[ii]).(z) # evaluate the interpolator
 end
@@ -400,6 +410,7 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
         dz=dz, icb=findfirst(z .>= exp.input.zcb) )
     # Flux is distributed to the clouds by their cloud top height distribution.
 
+    
     # run the cloud model for many sink rates
     # ! qcld is independent of fluxes !
     zt, F_cld, F_pcp, qcld = cloudflux_1x(
@@ -410,6 +421,10 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
         F2z=F2z, icb=findfirst(z .>= exp.input.zcb), 
         qcb=exp.input.qcb )
 
+    ztop, F_cld, F_pcp, qcld, acld = cloudflux_allsky(tot_sink=tot_sink; x=x, 
+        z, nz=length(z), dz=z[2]-z[1],
+        qm=qm, qs=qs, allskyeddyflux, icb=icb, qcb=qcb)
+
     # get sink rate as a function of cloud top height
     # postprocess to get w, a, M, ...
     w, _ = updraft_w_dq(F_cld, qcld, exp.input.qm, z, zt)
@@ -419,14 +434,29 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     # cloud fraction density per unit sink rate
     # da/dsinkrate = da/dh * dh/dsinkrate.
 
-    # sloppy interpolation of cloud area fraction to sink rate bins
-    da_dsink, da_ind = dadsinkrate(zt, exp.input.tot_sink, exp.input.cth_bin, exp.input.cth_nrm)
-    acld = ctx.dsink * da_dsink # cloud area fraction in sink rate bin
+    # interpolate cloud area fraction to sink rate bins
+    if length(exp.input.tot_sink) != length(ctx.z)
+        # sloppily interpolate from the cloud top height bins to the sink rate bins
+        # da_dsink, da_ind = dadsinkrate(zt, exp.input.tot_sink, exp.input.cth_bin, exp.input.cth_nrm)
+        # acld = ctx.dsink * da_dsink # cloud area fraction in sink rate bin; BROKEN
+        # improve by using interp_cloudtop_height to get a more accurate mapping of cloud top height to sink rate.
+        da_ind = eachindex(e.input.tot_sink)
+        ztop = interp_cloudtop_height(ctx.z, exp.output.qc .- exp.input.qs) # ztop in descending order, a fcn of sink rate
+        jj = @. ( !ismissing(exp.input.cth_acc) && !ismissing(exp.input.cth_bin) )
+        acld = interpolate_ascending(1e3*exp.input.cth_bin[jj], exp.input.cth_nrm[jj]).(ztop)
+        # acld is cloud fraction assigned to each sink rate bin -- not quite conservative
+    else
+        # direct assignment if sink rate bins are the same as z grid
+        da_ind = eachindex(exp.input.tot_sink)
+        acld = cloud_i_area(ctx) # cloud area fraction in sink rate & cloud top height bin i
+    end
+
+    M = F_cld ./ (qcld.-exp.input.qm) # cloud mass flux [z, sink rate]
 
     println("size(w)=$(size(w))") # (3100, 600) or (3100, 3100)
     exp.output.w .= w
     exp.output.acld[da_ind] .= acld
-    exp.output.M[:,da_ind] .= w[:,da_ind] .* acld' # mass flux per sink rate
+    exp.output.M[:,da_ind] .= M
     exp.output.qc .= qcld
     exp.output.F_cld .= F_cld
     exp.output.F_pcp .= F_pcp

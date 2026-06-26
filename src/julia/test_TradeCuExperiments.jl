@@ -139,7 +139,7 @@ loglog(0.95*sinkz, a_i, ":")
 loglog(1.05*sinkz, a_i, ":")
 # Cloud fraction is so small at the low-sink end that no extrapolation is recommended.
 
-# plot sink rate conditions for mesoscale experiments
+# plot sink rate parameter ensembles for mesoscale experiments
 clf()
 subplot(2,2,1)
 plot(1e3*controlsink.input.tot_sink, ctx.z/1e3, marker=".", linestyle="none", label="control")

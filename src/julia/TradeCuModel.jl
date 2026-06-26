@@ -297,9 +297,7 @@ end
 # Below, mass flux M depends on q_total and Fcld.
 
 "qtilde=(1-x)*qm .+ x*qs intermediate environmental moisture function"
-function q_tilde(qm, qs, x)
-    (1-x)*qm .+ x*qs
-end
+q_tilde(qm, qs, x) = (1-x)*qm .+ x*qs
 
 "updraft q_total function"
 function q_total(aedz, x, qs, qm; i0, qt0, stopattop=false)
@@ -452,6 +450,7 @@ function sortunique(ztop)
 end
 
 """
+DEPRECATED: 2026-06-26
 dadsinkrate(ztop, tot_sink, rfv_nrm, dh=10.0)
 Compute cloud fraction density per unit sink rate 
 da/dsinkrate = da/dh * dh/dsinkrate.
@@ -475,7 +474,6 @@ function dadsinkrate(ztop, tot_sink, cth_bin, rfv_nrm, dh=10.0)
     # println("sum(ii) = $(sum(ii))")
     da_dsink, findall(ii) # return the indices too
 end
-
 # usage later:
 # da_dsink = dadsinkrate(ztop, tot_sink, cth_bin, rfv_nrm)
 
@@ -526,6 +524,81 @@ function cloudflux_1x(tot_sink=tot_sink; x=x,
     end
     ztop, Fcld, Fp, qtc
 end
+
+
+"cloud model. no fluxes, just ztop, qtc"
+function cloud_qt(tot_sink=tot_sink; x=x, 
+    z, nz=length(z), dz=z[2]-z[1],
+    qm=qm, qs=qs, icb=icb, qcb=qcb)
+
+    ns = length(tot_sink)
+    qtc  = Array{ Union{Missing, Float64},2}(missing, nz, ns)
+    ztop = Vector{Union{Missing, Float64}}(missing, ns)
+
+    for (ia, ae) in enumerate(tot_sink)
+        qt = q_total(dz*ae, x, qs, qm; i0=icb, qt0=qcb)
+        qd = qt.-qs
+        ql = max.(0, qd)
+        itop = findcloudtop(ql,z; zcb=z[icb])
+        if !isnothing(itop) 
+            ztop[ia] = z[itop] # ztop can be up to 20 km
+            if !deep_cloud(ql,z)
+                qtc[:,ia] .= qt
+            end
+        end
+    end
+    ztop, qtc
+end
+
+"""
+Compute _normalized_ cloud and precip fluxes for constant cloud flux F_i=1.
+The fluxes are to be scaled by F_i = G_i/a_i from the flux partition.
+"""
+function compute_normalized_fluxes(tot_sink=tot_sink; x=x, 
+    z, nz=length(z), dz=z[2]-z[1],
+    qm=qm, qs=qs, qtc, icb=icb, qcb=qcb)
+
+    ns = length(tot_sink)
+    Fcld = Array{ Union{Missing, Float64},2}(missing, nz, ns)
+    Fp   = Array{ Union{Missing, Float64},2}(missing, nz, ns)
+
+    for ia in eachindex(tot_sink)
+        ae = tot_sink[ia]
+        qt = qtc[:,ia]
+        qd = qt.-qs
+        ql = max.(0, qd)
+        itop = findcloudtop(ql,z; zcb=z[icb])
+        if !isnothing(itop) 
+            ztop[ia] = z[itop] # ztop can be up to 20 km
+            if !deep_cloud(ql,z) # compute normalized flux profiles
+                Fp[:,ia] .= -precipflux_down( x, ae, ones(nz), ql, qt, qm, istart=itop, icb=icb, dz=dz )
+                # cloud updraft flux
+                #          =toteddy - precip
+                Fcld[:,ia] .= 1 - Fp[:,ia] 
+            end
+        end
+    end
+    # ScaledFcld = NormalizedFcld * F2z
+    # ScaledFp   = NormalizedFp   * F2z
+    Fcld, Fp # normalized by F2z
+end
+
+function cloudflux_allsky(tot_sink=tot_sink; x=x, 
+    z, nz=length(z), dz=z[2]-z[1],
+    qm=qm, qs=qs, allskyeddyflux, icb=icb, qcb=qcb)
+    
+    _, qtc = cloud_qt(tot_sink; x=x, z=z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, icb=icb, qcb=qcb)
+    ztop = interp_cloudtop_height(z, qtc.-qs) # reinterpolate cloud top height from qd=qt-qs
+    a_i = interp_ascending(1e3*cth_bin, rfv_nrm).(ztop) # interpolate cloud fraction for each cloud category i
+    Feddy_i = allskyeddyflux ./ a_i;
+    
+    Ncld, Np = compute_normalized_fluxes(tot_sink; x=x, z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, qtc=qtc, icb=icb, qcb=qcb)
+    Fcld = Ncld .* Feddy_i
+    Fp = Np .* Feddy_i
+
+    return ztop, Fcld, Fp, qtc, a_i
+end
+
 
 "compute w for a single x and range of sink rates"
 function updraft_w_dq(Fcld, qtc, qm, z, ztop)
