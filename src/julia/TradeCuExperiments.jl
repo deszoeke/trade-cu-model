@@ -41,11 +41,12 @@ export ModelInput, ModelOutput, ModelContext, Experiment # types for experiment 
 export ExpDict # dictionary contains defined experiments
 export init_context, define_experiments
 export integrate_experiment!
-export get_sinkrate
+export get_sinkrate, interp_sinkrate
 # temporarily export more to experiment in outside environment
 export setup_experiments
 export cloud_i_area
 export test_control_sink
+export calc_ql
 
 # Define the Inputs Container
 struct ModelInput
@@ -227,12 +228,12 @@ end
 function define_control_sink_experiment(; ctx::ModelContext, sinkz=sinkz)
     ( qm, qs, zcb, qcb, E_cb, x, divg, 
         tot_sink, cth_bin, rfv_acc, rfv_nrm, 
-        rhoL, E_cb, qcb, ns, nz ) = TradeCuExperiments.setup_experiments(ctx=ctx)
+        rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx)
 
     return Experiment(
             "control-sink", "Control for setting compact set of sink rates",
             ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, sinkz, cth_bin, rfv_acc, rfv_nrm),
-            TradeCuExperiments.allocate_output(nz,nz) ) # note nz,nz
+            allocate_output(nz,nz) ) # note nz,nz
 end
 
 function cloud_i_area( ctx )
@@ -323,6 +324,69 @@ function get_sinkrate( exp::Experiment; ctx::ModelContext )
     return sinkz
 end
 
+function interp_sinkrate( e::Experiment; ctx::ModelContext )
+    z = ctx.z
+    tot_sink = e.input.tot_sink
+    qd = e.output.qc .- e.input.qs
+    ztop = interp_cloudtop_height(z, qd) # ztop is in descending order
+    
+    sinkz = fill(NaN, length(z))
+    
+    # Protect against all-missing arrays
+    valid_ztops = skipmissing(ztop)
+    isempty(valid_ztops) && return sinkz
+    zt_min, zt_max = extrema(valid_ztops)
+    
+    for i in 1:(length(z) - 1)
+        if isfinite(z[i]) && zt_min <= z[i] <= zt_max
+            
+            # 1. Find the first valid index below or equal to the target height
+            j = findfirst(v -> !ismissing(v) && v <= z[i], ztop)
+            
+            # 2. Make sure j is valid and has an index right before it
+            if j !== nothing && j > 1
+                j_prev = j - 1
+                
+                # 3. Use the pair only if the upper bound isn't missing
+                if !ismissing(ztop[j_prev])
+                    z1, z2 = ztop[j_prev], ztop[j]
+                    s1, s2 = tot_sink[j_prev], tot_sink[j]
+                    
+                    if z2 != z1
+                        sinkz[i] = s1 + (s2 - s1) * (z[i] - z1) / (z2 - z1)
+                    end
+                end
+            end
+        end
+    end
+    return sinkz
+end
+
+function interpolate_descending( X::AbstractVector{<:Real}, Y::AbstractVector{<:Real} )
+    N = length(X)
+    function itp(x)
+        # strictly NaN true out-of-bounds inputs
+        x > X[1] || x < X[end] && return NaN
+        # search for descending vector order
+        j = clamp(searchsortedfirst(X, x, rev=true), 2, N) # clamped to data intervals [2, N]
+        x1, x2 = X[j-1], X[j]
+        y1, y2 = Y[j-1], Y[j]
+        x2 == x1 ? y1 : y1 + (y2 - y1) * (x - x1) / (x2 - x1)
+    end
+    return itp
+end
+
+function interp_sinkrate( e::Experiment; ctx::ModelContext )
+    z = ctx.z
+    tot_sink = e.input.tot_sink
+    qd = e.output.qc .- e.input.qs
+    ztop = interp_cloudtop_height(z, qd) # ztop is in descending order
+    
+    ii = !ismissing.(ztop) # filter missing, let NaN thru
+    sinkz = interpolate_descending(ztop[ii], tot_sink[ii]).(z)
+end
+# search above iz = 74 (730 m)
+
 "integrate an experiment based on inputs, modify output in place"
 function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     println("integrate_experiment! $(exp.name)")
@@ -356,6 +420,7 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     # cloud fraction density per unit sink rate
     # da/dsinkrate = da/dh * dh/dsinkrate.
 
+    # sloppy interpolation of cloud area fraction to sink rate bins
     da_dsink, da_ind = dadsinkrate(zt, exp.input.tot_sink, exp.input.cth_bin, exp.input.cth_nrm)
     acld = ctx.dsink * da_dsink # cloud area fraction in sink rate bin
 
@@ -372,8 +437,49 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     return nothing
 end
 
+calc_ql(exp) = @. max(0, exp.output.qc - exp.input.qs)
 
-# TESTS
+"average cloud properties s[zt] in cloud top height bins zbin[inbin-1] < zt <= zbin[inbin]"
+function meanbin_scalar!(a::Vector, c::Vector, s::Vector, zt::Vector, zbin::Vector)
+    eachindex(zt)[ findfirst( zt.>=700.0 ):end ]
+    for i in eachindex(zt)
+        # find the bin index for cloud top height zbin[inbin-1] < zt <= zbin[inbin]
+        inbin = searchsortedfirst( zbin, zt[i] )
+        if !isempty(inbin) && inbin <= length(a)
+            a[inbin] += s[i]
+            c[inbin] += 1
+        end
+    end
+    return a ./ c # return the mean
+end
+function meanbin_scalar(s,zt, zbin)
+    a = zeros(length(zbin))
+    c = zeros(length(zbin))
+    meanbin_scalar!(a,c, s,zt, zbin)
+    return a
+end
+
+"average cloud properties s[:,zt] in cloud top height bins zbin[inbin-1] < zt <= zbin[inbin]"
+function meanbin_vec!(a::Matrix, c::Matrix, s::Matrix, zt::Vector, zbin::Vector)
+    eachindex(zt)[ findfirst( zt.>=700.0 ):end ]
+    for i in eachindex(zt)
+        # find the bin index for cloud top height zbin[inbin-1] < zt <= zbin[inbin]
+        inbin = searchsortedfirst( zbin, zt[i] )
+        if !isempty(inbin) && inbin <= length(a)
+            a[:,inbin] .+= s[:,i]
+            c[:,inbin] .+= 1
+        end
+    end
+    return a ./ c # return the mean
+end
+function meanbin_vec(s,zt, zbin)
+    a = zeros(size(s,1), length(zbin))
+    c = zeros(size(s,1), length(zbin))
+    meanbin_vec!(a,c, s,zt, zbin)
+    return a
+end
+
+# EXPERIMENT TESTS
 """
 inject this exeriment function within TradeCuExperiments module
 to test the sink rate setting experiment.
@@ -397,17 +503,15 @@ function test_control_sink()
     "(1-RH)-5%",
     "DIM" ]
 
-    # get sink rate ss a function of cloud top height from control
+    # get sink rate as a function of cloud top height from control
     sinkz = get_sinkrate( ExpDict["control"]; ctx=ctx )
     a_i = cloud_i_area( ctx )
-    controlsink = define_control_sink_experiment(ctx=ctx, sinkz=sinkz)
-    # debug this:
-    integrate_experiment!(controlsink, ctx=ctx) # doesn't work with sinkz in controlsink
-
-    sinkm5 = define_control_sink_experiment(ctx=ctx, sinkz=0.95*sinkz)
-    sinkp5 = define_control_sink_experiment(ctx=ctx, sinkz=1.05*sinkz)
-    integrate_experiment!(sinkm5, ctx=ctx) # doesn't work with sinkz in controlsink
-    integrate_experiment!(sinkp5, ctx=ctx) # doesn't work with sinkz in controlsink
+    controlsink = define_control_sink_experiment(ctx=ctx, sinkz=     sinkz)
+    sinkm5      = define_control_sink_experiment(ctx=ctx, sinkz=0.95*sinkz)
+    sinkp5      = define_control_sink_experiment(ctx=ctx, sinkz=1.05*sinkz)
+    integrate_experiment!(controlsink, ctx=ctx)
+    integrate_experiment!(sinkm5,      ctx=ctx)
+    integrate_experiment!(sinkp5,      ctx=ctx)
 
     # The clouds don't depend on the fluxes at all.
     # Another way to experiment is to keep the control distribution of

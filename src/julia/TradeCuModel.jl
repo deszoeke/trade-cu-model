@@ -30,7 +30,7 @@ export precipflux_down!, precipflux_down, precipflux_down_sfc
 export calcF2
 export cloudflux_1x
 export updraft_w_dq
-export dadsinkrate, find_contour!
+export dadsinkrate, find_contour!, interp_cloudtop_height
 export tmean, tstd
 export get_sounding_dataset, get_mean_soundings, get_goes_cloud_data
 export virtual_temp, calc_rhoL, Lv, LvK
@@ -527,7 +527,6 @@ function cloudflux_1x(tot_sink=tot_sink; x=x,
     ztop, Fcld, Fp, qtc
 end
 
-
 "compute w for a single x and range of sink rates"
 function updraft_w_dq(Fcld, qtc, qm, z, ztop)
     dq = qtc .- qm
@@ -573,6 +572,39 @@ end
 # sinkz = Vector{Float64}(missing, length(z))
 # find_contour!(sinkz[iz], tot_sink, z[iz], pd((qtc.-qs)[iz,:]), 0)
 # plot(sinkz, z, "k")
+
+"""
+linearly interpolate the cloud top height from
+qd = qt[z,tot_sink] .- qs       for each sink rate
+"""
+function interp_cloudtop_height(z, qd)
+    @assert size(qd, 1) == length(z) "Dimension mismatch between z and size(qd,1)."
+    imin = searchsortedfirst(z, 700)
+    imax = searchsortedlast(z, 5000) # index of 5000 m
+    ztop = Vector{Union{Missing, Float64}}(missing, size(qd, 2))
+    for j in axes(qd, 2)
+        # Scan upward from 700m to 5000m to find where qd crosses from >0 to <=0
+        for i in imin:(imax - 1)
+            q1 = qd[i, j]
+            q2 = qd[i + 1, j]
+            
+            # Skip if data is missing
+            if ismissing(q1) || ismissing(q2)
+                continue
+            end
+            # Detect zero-crossing, positive to negative, so negative slope
+            if q1 > 0 && q2 <= 0
+                z1, z2 = z[i], z[i + 1]
+                # Linear interpolation for zero-crossing
+                ztop[j] = z1 + (z2 - z1) * (0.0 - q1) / (q2 - q1)
+                break # Found the cloud top for this column, move to next
+            end
+        end
+    end
+    return ztop
+end
+
+# PLOTTING FUNCTIONS
 
 "Plot cloud profiles for a single precipitation efficiency x and a range of sink rates tot_sink."
 function plot_qv_qc_w(tot_sink, z, da_dsink, ztop, qtc, Fcld, w, qm, qs; x=0.53, ntp=500)
