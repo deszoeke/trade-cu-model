@@ -690,7 +690,9 @@ function cloudflux_allsky(tot_sink=tot_sink; x=x,
     ztop = interp_cloudtop_height(z, qtc.-qs) # reinterpolate cloud top height from qd=qt-qs
     ii = @. ( !ismissing(ztop) )
     a_i = fill(NaN, length(ztop))
-    a_i[ii] = interpolate_ascending(1e3*cth_bin, cth_nrm).(ztop[ii]) # interpolate cloud fraction for each cloud category i
+    jj = @. ( !ismissing(cth_nrm) && !ismissing(cth_bin) )
+    a_i[ii] = interpolate_ascending(1e3*coalesce.(cth_bin[jj],NaN), 
+                                        coalesce.(cth_nrm[jj],NaN) ).(ztop[ii]) # interpolate cloud fraction for each cloud category i
     Feddy_i = allskyeddyflux ./ permutedims(a_i);
     
     Ncld, Np = compute_normalized_fluxes(tot_sink; x=x, z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, qtc=qtc, icb=icb, qcb=qcb)
