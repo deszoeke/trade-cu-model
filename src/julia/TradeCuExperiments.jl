@@ -38,7 +38,7 @@ using Statistics
 using VaporSat # dev ../../deps/VaporSat
 
 export ExpDict # dictionary contains defined experiments
-export init_context, define_experiments
+export init_context, define_experiments, define_experiment
 export integrate_experiment!
 export interp_sinkrate #, get_sinkrate
 # temporarily export more to experiment in outside environment
@@ -173,6 +173,14 @@ function define_experiments(; ctx::ModelContext)
     )
 end
 
+function define_experiment(; name, description, 
+    qm, qs, zcb, qcb, E_cb, x, divg, tot_sink, cth_bin, rfv_acc, rfv_nrm)
+    Experiment( 
+        name, description,
+        ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, tot_sink, cth_bin, rfv_acc, rfv_nrm),
+        allocate_output(length(qm),length(tot_sink)) )
+end
+
 function define_control_sink_experiment(; ctx::ModelContext, sinkz=sinkz)
     ( qm, qs, zcb, qcb, E_cb, x, divg, 
         tot_sink, cth_bin, rfv_acc, rfv_nrm, 
@@ -181,6 +189,18 @@ function define_control_sink_experiment(; ctx::ModelContext, sinkz=sinkz)
     return Experiment(
             "control-sink", "Control for setting compact set of sink rates",
             ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, sinkz, cth_bin, rfv_acc, rfv_nrm),
+            allocate_output(nz,nz) ) # note nz,nz
+end
+
+function define_DIM_sink_experiment(; ctx::ModelContext, sinkz=sinkz)
+    ( qm, qs, zcb, qcb, E_cb, x, divg, 
+        tot_sink, cth_bin, rfv_acc, rfv_nrm, 
+        rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx)
+
+    qm_new = @. (1 - 0.95*(1-qm/qs)) * qs * 1.07
+    return Experiment(
+            "DIM-z", "DIM with z≈ztop",
+            ModelInput(qm_new, qs*1.07, zcb, qcb*1.07, E_cb*1.02, x, divg*0.95, sinkz, cth_bin, 0.95*rfv_acc, 0.95*rfv_nrm),
             allocate_output(nz,nz) ) # note nz,nz
 end
 
@@ -410,6 +430,15 @@ function test_control_sink()
     integrate_experiment!(controlsink, ctx=ctx)
     integrate_experiment!(sinkm5,      ctx=ctx)
     integrate_experiment!(sinkp5,      ctx=ctx)
+
+    # DIM experiments with ztop at z grid, mesoscale sink rate perturbations
+    DIMsink   = define_DIM_sink_experiment(ctx=ctx, sinkz=     sinkz)
+    DIMsinkm5 = define_DIM_sink_experiment(ctx=ctx, sinkz=0.95*sinkz)
+    DIMsinkp5 = define_DIM_sink_experiment(ctx=ctx, sinkz=1.05*sinkz)
+    integrate_experiment!(DIMsink,   ctx=ctx)
+    integrate_experiment!(DIMsinkm5, ctx=ctx)
+    integrate_experiment!(DIMsinkp5, ctx=ctx)
+
 
     # The clouds don't depend on the fluxes at all.
     # Another way to experiment is to keep the control distribution of
