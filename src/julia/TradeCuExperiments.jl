@@ -256,57 +256,10 @@ function calc_Ftot(; ctx::ModelContext,
     return F2z, G
 end
 
-# """
-# DEPRECATED, use interp_sinkrate instead
-# get_sinkrate( exp::Experiment; ctx::ModelContext )
-# get total sink rate for each z level by finding the contour of 
-# qcld - qs = 0, which is the cloud top height for each sink rate.
-# """
-# function get_sinkrate( exp::Experiment; ctx::ModelContext )
-#     sinkz = NaN .+ zeros(length(ctx.z)) # fill a vector with NaN
-#     iz = findall(exp.input.zcb .<= ctx.z .<= 3500.0) # valid cloud tops
-#     ii = findall(isfinite, exp.input.tot_sink)
-#     qd = (exp.output.qc .- exp.input.qs)[iz,ii]
-#     # update sinkz
-#     TradeCuModel.find_contour!(@view(sinkz[iz]), exp.input.tot_sink[ii], permutedims(qd), 0.0)
-#     # (sinkz, ctx.z) gives the sink rate as function of cloud top.
-#     return sinkz
-# end
-
 # refine the sink rate and cloud top height interpolation
 
 "binear interpolation of y(x) between (x1,y1) and (x2,y2)"
 bilinear(x1,x2, y1,y2, x) = ( x2 == x1 ? y1 : y1 + (y2-y1) * (x-x1) / (x2-x1) )
-
-# OLD, redefinted more cleanly below
-# function interp_sinkrate( e::Experiment; ctx::ModelContext )
-#     z = ctx.z
-#     tot_sink = e.input.tot_sink
-#     qd = e.output.qc .- e.input.qs
-#     ztop = interp_cloudtop_height(z, qd) # ztop is in descending order
-#    
-#     sinkz = fill(NaN, length(z))
-#    
-#     # Protect against all-missing arrays
-#     valid_ztops = skipmissing(ztop)
-#     isempty(valid_ztops) && return sinkz
-#     zt_min, zt_max = extrema(valid_ztops)
-#    
-#     for i in 1:(length(z) - 1)
-#         if isfinite(z[i]) && zt_min <= z[i] <= zt_max
-#             # index valid points below or equal to the target height
-#             j = findfirst(v -> !ismissing(v) && v <= z[i], ztop)
-#             if j !== nothing && j > 1    # j is valid and interior
-#                 if !ismissing(ztop[j-1]) # valid data
-#                     sinkz[i] = bilinear(    ztop[j-1],     ztop[j], 
-#                                         tot_sink[j-1], tot_sink[j], z[i])
-#                 end
-#             end
-#         end
-#     end
-#     return sinkz
-# end
-
 
 "integrate an experiment based on inputs, modify output in place"
 function integrate_experiment!(exp::Experiment; ctx::ModelContext)
