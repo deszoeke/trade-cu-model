@@ -25,12 +25,14 @@ using VaporSat # dev ../../deps/VaporSat
 # exported functions
 export similarmissing, n2m, nisf2m
 export mid, m2z, anom, runningmean, recursef, upsample1, upsample, ξ
+export ModelInput, ModelOutput, ModelContext, Experiment # types for experiment data
 export ddz, q_total, cloudflux!
 export precipflux_down!, precipflux_down, precipflux_down_sfc
 export calcF2
-export cloudflux_1x
+export cloudflux_1x, cloudflux_allsky
 export updraft_w_dq
-export dadsinkrate, find_contour!, interp_cloudtop_height
+export dadsinkrate, find_contour!, interpolate_ascending, interpolate_descending
+export interp_sinkrate, interp_cloudtop_height
 export tmean, tstd
 export get_sounding_dataset, get_mean_soundings, get_goes_cloud_data
 export virtual_temp, calc_rhoL, Lv, LvK
@@ -290,6 +292,59 @@ function get_goes_cloud_data()
     end
 end
 
+# data structures for experiments
+
+# Define the Inputs Container
+struct ModelInput
+    qm::Vector
+    qs::Vector
+    zcb::Number
+    qcb::Number
+    E_cb::Number
+    x::Number
+    divg::Number
+    tot_sink::Vector
+    cth_bin::Vector
+    cth_acc::Vector # accumulated cloud fraction below cth_bin
+    cth_nrm::Vector # cloud fraction within cth_bin
+end
+
+# Define the Outputs Container
+struct ModelOutput
+    M::Matrix{Union{U, Missing}} where U<:Number
+    w::Matrix{Union{U, Missing}} where U<:Number
+    acld::Vector{Union{U, Missing}} where U<:Number
+    qc::Matrix{Union{U, Missing}} where U<:Number
+    F_cld::Matrix{Union{U, Missing}} where U<:Number
+    F_pcp::Matrix{Union{U, Missing}} where U<:Number
+    G_cld::Matrix{Union{U, Missing}} where U<:Number
+    G_pcp::Matrix{Union{U, Missing}} where U<:Number
+end
+
+# Define Experiments of input-output pairs
+struct Experiment
+    name::String
+    description::String
+    input::ModelInput
+    output::ModelOutput
+end
+
+"Shared, cached data loaded once for all experiments."
+struct ModelContext
+    z::Vector{Float64}
+    qm::Vector{Float64}
+    qs::Vector{Float64}
+    cth_bin::Vector{Float64}
+    rfv_acc::Vector{Float64}
+    rfv_nrm::Vector{Float64}
+    dz::Float64
+    dsink::Float64
+    zcb::Float64
+    zi::Float64
+    ztop::Float64
+    rhoL::Float64
+end
+
 # functions for the cloud model
 
 # cloud model - updraft total water and cloud water functions
@@ -477,6 +532,48 @@ end
 # usage later:
 # da_dsink = dadsinkrate(ztop, tot_sink, cth_bin, rfv_nrm)
 
+"bilinear interpolation of y(x) between (x1,y1) and (x2,y2)"
+bilinear(x1,x2, y1,y2, x) = ( x2 == x1 ? y1 : y1 + (y2-y1) * (x-x1) / (x2-x1) )
+
+"returns a function that interpolates y(x) from vectors X, Y with X descending"
+function interpolate_descending( X::AbstractVector{<:Real}, Y::AbstractVector{<:Real} )
+    function itp(x)
+        # strictly NaN true out-of-bounds inputs
+        x > X[1] || x < X[end] && return NaN
+        # search for descending vector order
+        j = clamp(searchsortedfirst(X, x, rev=true), 2, length(X)) # clamped to data intervals [2, N]
+        bilinear(X[j-1],X[j], Y[j-1],Y[j], x)
+    end
+    return itp
+end
+
+"returns a function that interpolates y(x) from vectors X, Y with X ascending"
+function interpolate_ascending( X::AbstractVector{<:Real}, Y::AbstractVector{<:Real} )
+    function itp(x)
+        # strictly NaN true out-of-bounds inputs
+        x > X[1] || x < X[end] && return NaN
+        # search for ascending vector order
+        j = clamp(searchsortedfirst(X, x), 1, length(X)-1) # clamped to data intervals [1, N-1]
+        bilinear(X[j],X[j+1], Y[j],Y[j+1], x)
+    end
+    return itp
+end
+
+"""
+sinkz = interp_sinkrate( expmt; ctx )
+interpolate the sink rate for cloud top height at the model z grid.
+"""
+function interp_sinkrate( e::Experiment; ctx::ModelContext )
+    z = ctx.z
+    tot_sink = e.input.tot_sink
+    qd = e.output.qc .- e.input.qs
+    ztop = interp_cloudtop_height(z, qd) # ztop is in descending order
+    ii = .!ismissing.(ztop) # filter missing, let NaN thru
+    println("size(ii) = $(size(ii))")
+    sinkz = interpolate_descending(coalesce.(ztop[ii], NaN), coalesce.(tot_sink[ii], NaN)).(z) # evaluate the interpolator
+end
+# implementation: search above iz = 74 (730 m)
+
 # refine cloud top for x=0.53
 
 # nx = 500
@@ -561,6 +658,7 @@ function compute_normalized_fluxes(tot_sink=tot_sink; x=x,
     ns = length(tot_sink)
     Fcld = Array{ Union{Missing, Float64},2}(missing, nz, ns)
     Fp   = Array{ Union{Missing, Float64},2}(missing, nz, ns)
+    ztop = Vector{Union{Missing, Float64}}(missing, ns)
 
     for ia in eachindex(tot_sink)
         ae = tot_sink[ia]
@@ -568,13 +666,13 @@ function compute_normalized_fluxes(tot_sink=tot_sink; x=x,
         qd = qt.-qs
         ql = max.(0, qd)
         itop = findcloudtop(ql,z; zcb=z[icb])
-        if !isnothing(itop) 
+        if !isnothing(itop) && itop > 0
             ztop[ia] = z[itop] # ztop can be up to 20 km
             if !deep_cloud(ql,z) # compute normalized flux profiles
                 Fp[:,ia] .= -precipflux_down( x, ae, ones(nz), ql, qt, qm, istart=itop, icb=icb, dz=dz )
                 # cloud updraft flux
                 #          =toteddy - precip
-                Fcld[:,ia] .= 1 - Fp[:,ia] 
+                Fcld[:,ia] .= 1.0 .- Fp[:,ia] 
             end
         end
     end
@@ -585,12 +683,15 @@ end
 
 function cloudflux_allsky(tot_sink=tot_sink; x=x, 
     z, nz=length(z), dz=z[2]-z[1],
-    qm=qm, qs=qs, allskyeddyflux, icb=icb, qcb=qcb)
+    qm=qm, qs=qs, allskyeddyflux, icb=icb, qcb=qcb,
+    cth_bin, cth_nrm)
     
     _, qtc = cloud_qt(tot_sink; x=x, z=z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, icb=icb, qcb=qcb)
     ztop = interp_cloudtop_height(z, qtc.-qs) # reinterpolate cloud top height from qd=qt-qs
-    a_i = interp_ascending(1e3*cth_bin, rfv_nrm).(ztop) # interpolate cloud fraction for each cloud category i
-    Feddy_i = allskyeddyflux ./ a_i;
+    ii = @. ( !ismissing(ztop) )
+    a_i = fill(NaN, length(ztop))
+    a_i[ii] = interpolate_ascending(1e3*cth_bin, cth_nrm).(ztop[ii]) # interpolate cloud fraction for each cloud category i
+    Feddy_i = allskyeddyflux ./ permutedims(a_i);
     
     Ncld, Np = compute_normalized_fluxes(tot_sink; x=x, z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, qtc=qtc, icb=icb, qcb=qcb)
     Fcld = Ncld .* Feddy_i
@@ -598,7 +699,6 @@ function cloudflux_allsky(tot_sink=tot_sink; x=x,
 
     return ztop, Fcld, Fp, qtc, a_i
 end
-
 
 "compute w for a single x and range of sink rates"
 function updraft_w_dq(Fcld, qtc, qm, z, ztop)

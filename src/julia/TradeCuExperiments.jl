@@ -37,7 +37,6 @@ using ..TradeCuModel
 using Statistics
 using VaporSat # dev ../../deps/VaporSat
 
-export ModelInput, ModelOutput, ModelContext, Experiment # types for experiment data
 export ExpDict # dictionary contains defined experiments
 export init_context, define_experiments
 export integrate_experiment!
@@ -48,56 +47,6 @@ export cloud_i_area
 export test_control_sink
 export calc_ql
 
-# Define the Inputs Container
-struct ModelInput
-    qm::Vector
-    qs::Vector
-    zcb::Number
-    qcb::Number
-    E_cb::Number
-    x::Number
-    divg::Number
-    tot_sink::Vector
-    cth_bin::Vector
-    cth_acc::Vector # accumulated cloud fraction below cth_bin
-    cth_nrm::Vector # cloud fraction within cth_bin
-end
-
-# Define the Outputs Container
-struct ModelOutput
-    M::Matrix{Union{U, Missing}} where U<:Number
-    w::Matrix{Union{U, Missing}} where U<:Number
-    acld::Vector{Union{U, Missing}} where U<:Number
-    qc::Matrix{Union{U, Missing}} where U<:Number
-    F_cld::Matrix{Union{U, Missing}} where U<:Number
-    F_pcp::Matrix{Union{U, Missing}} where U<:Number
-    G_cld::Matrix{Union{U, Missing}} where U<:Number
-    G_pcp::Matrix{Union{U, Missing}} where U<:Number
-end
-
-# Define Experiments of input-output pairs
-struct Experiment
-    name::String
-    description::String
-    input::ModelInput
-    output::ModelOutput
-end
-
-"Shared, cached data loaded once for all experiments."
-struct ModelContext
-    z::Vector{Float64}
-    qm::Vector{Float64}
-    qs::Vector{Float64}
-    cth_bin::Vector{Float64}
-    rfv_acc::Vector{Float64}
-    rfv_nrm::Vector{Float64}
-    dz::Float64
-    dsink::Float64
-    zcb::Float64
-    zi::Float64
-    ztop::Float64
-    rhoL::Float64
-end
 
 "Load sounding and GOES data once and return initialized context."
 function init_context()
@@ -132,7 +81,6 @@ function init_context()
         rhoL,
     )
 end
-
 
 "initialize parameters, grids, data for experiments"
 function setup_experiments(; ctx::ModelContext)
@@ -359,42 +307,6 @@ bilinear(x1,x2, y1,y2, x) = ( x2 == x1 ? y1 : y1 + (y2-y1) * (x-x1) / (x2-x1) )
 #     return sinkz
 # end
 
-"returns a function that interpolates y(x) from vectors X, Y with X descending"
-function interpolate_descending( X::AbstractVector{<:Real}, Y::AbstractVector{<:Real} )
-    function itp(x)
-        # strictly NaN true out-of-bounds inputs
-        x > X[1] || x < X[end] && return NaN
-        # search for descending vector order
-        j = clamp(searchsortedfirst(X, x, rev=true), 2, length(X)) # clamped to data intervals [2, N]
-        bilinear(X[j-1],X[j], Y[j-1],Y[j], x)
-    end
-    return itp
-end
-
-"returns a function that interpolates y(x) from vectors X, Y with X ascending"
-function interpolate_ascending( X::AbstractVector{<:Real}, Y::AbstractVector{<:Real} )
-    function itp(x)
-        # strictly NaN true out-of-bounds inputs
-        x > X[1] || x < X[end] && return NaN
-        # search for ascending vector order
-        j = clamp(searchsortedfirst(X, x), 1, length(X)-1) # clamped to data intervals [1, N-1]
-        bilinear(X[j],X[j+1], Y[j],Y[j+1], x)
-    end
-    return itp
-end
-"""
-sinkz = interp_sinkrate( expmt; ctx )
-interpolate the sink rate for cloud top height at the model z grid.
-"""
-function interp_sinkrate( e::Experiment; ctx::ModelContext )
-    z = ctx.z
-    tot_sink = e.input.tot_sink
-    qd = e.output.qc .- e.input.qs
-    ztop = interp_cloudtop_height(z, qd) # ztop is in descending order
-    ii = !ismissing.(ztop) # filter missing, let NaN thru
-    sinkz = interpolate_descending(ztop[ii], tot_sink[ii]).(z) # evaluate the interpolator
-end
-# implementation: search above iz = 74 (730 m)
 
 "integrate an experiment based on inputs, modify output in place"
 function integrate_experiment!(exp::Experiment; ctx::ModelContext)
@@ -410,7 +322,6 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
         dz=dz, icb=findfirst(z .>= exp.input.zcb) )
     # Flux is distributed to the clouds by their cloud top height distribution.
 
-    
     # run the cloud model for many sink rates
     # ! qcld is independent of fluxes !
     # zt, F_cld, F_pcp, qcld = cloudflux_1x(
@@ -421,13 +332,15 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     #     F2z=F2z, icb=findfirst(z .>= exp.input.zcb), 
     #     qcb=exp.input.qcb )
 
-    ztop, F_cld, F_pcp, qcld, acld = cloudflux_allsky(tot_sink=tot_sink; x=x, 
-        z, nz=length(z), dz=z[2]-z[1],
-        qm=qm, qs=qs, allskyeddyflux, icb=icb, qcb=qcb)
+    ztop, F_cld, F_pcp, qcld, acld = cloudflux_allsky(exp.input.tot_sink; 
+        x=exp.input.x, z=z, nz=length(z), dz=z[2]-z[1],
+        qm=exp.input.qm, qs=exp.input.qs, allskyeddyflux=G_ls, 
+        icb=findfirst(z.>=exp.input.zcb), qcb=exp.input.qcb,
+        cth_bin=exp.input.cth_bin, cth_nrm=exp.input.cth_nrm)
 
     # get sink rate as a function of cloud top height
     # postprocess to get w, a, M, ...
-    w, _ = updraft_w_dq(F_cld, qcld, exp.input.qm, z, zt)
+    # w, _ = updraft_w_dq(F_cld, qcld, exp.input.qm, z, ztop)
     # print("size(w): $(size(w))") # nz, ns = (3100, 600)
 
     # Interpolate satellite coordinate to model sinkrate coordiante.
@@ -440,10 +353,12 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
         # da_dsink, da_ind = dadsinkrate(zt, exp.input.tot_sink, exp.input.cth_bin, exp.input.cth_nrm)
         # acld = ctx.dsink * da_dsink # cloud area fraction in sink rate bin; BROKEN
         # improve by using interp_cloudtop_height to get a more accurate mapping of cloud top height to sink rate.
-        da_ind = eachindex(e.input.tot_sink)
+        da_ind = eachindex(exp.input.tot_sink)
         ztop = interp_cloudtop_height(ctx.z, exp.output.qc .- exp.input.qs) # ztop in descending order, a fcn of sink rate
         jj = @. ( !ismissing(exp.input.cth_acc) && !ismissing(exp.input.cth_bin) )
-        acld = interpolate_ascending(1e3*exp.input.cth_bin[jj], exp.input.cth_nrm[jj]).(ztop)
+        ii = @. ( !ismissing(ztop) )
+        acld = fill(NaN, length(ztop))
+        acld[ii] = interpolate_ascending(1e3*exp.input.cth_bin[jj], exp.input.cth_nrm[jj]).(ztop[ii])
         # acld is cloud fraction assigned to each sink rate bin -- not quite conservative
     else
         # direct assignment if sink rate bins are the same as z grid
@@ -452,15 +367,16 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     end
 
     M = F_cld ./ (qcld.-exp.input.qm) # cloud mass flux [z, sink rate]
+    w = M ./ acld' # updraft velocity [z, sink rate]
 
     println("size(w)=$(size(w))") # (3100, 600) or (3100, 3100)
-    exp.output.w .= w
     exp.output.acld[da_ind] .= acld
     exp.output.M[:,da_ind] .= M
+    exp.output.w[:,da_ind] .= w
     exp.output.qc .= qcld
-    exp.output.F_cld .= F_cld
+    exp.output.F_cld .= F_cld  # in-cloud moisture flux [z, sink rate]
     exp.output.F_pcp .= F_pcp
-    exp.output.G_cld[:,da_ind] .= F_cld[:,da_ind] .* acld'
+    exp.output.G_cld[:,da_ind] .= F_cld[:,da_ind] .* acld' # all-sky cloud moisture flux [z, sink rate]
     exp.output.G_pcp[:,da_ind] .= F_pcp[:,da_ind] .* acld'
 
     return nothing
