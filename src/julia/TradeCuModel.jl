@@ -287,7 +287,7 @@ function get_goes_cloud_data()
     NCDataset("../../data/satellite/GOES-16/goes16_binned_low4km_20200115_20200219.nc") do dsa
         rfv_nrm = mean(dsa[:rfv_nrm][:,:], dims=2)[:]
         rfv_acc = mean(dsa[:rfv_acc][:,:], dims=2)[:]
-        cth_bin = dsa[:cth_bin][:]
+        cth_bin = 1e3 * dsa[:cth_bin][:] # km -> m
         return rfv_nrm, rfv_acc, cth_bin
     end
 end
@@ -438,7 +438,7 @@ end
 # rfv_acc[end] == 0.0
 
 # line up model grid and cloud top height bins
-# offset = findfirst(x->x≈cth_bin[1]*1e3, z) - 1 # 50; cth_bin starts at z=500
+# offset = findfirst(x->x≈cth_bin[1], z) - 1 # 50; cth_bin starts at z=500
 
 calcF2_(G, acc; sk=1) = diff(G[1:sk:end]) ./ diff(acc[1:sk:end]) # dimension category_i, inputs asligned!
 
@@ -524,7 +524,7 @@ function dadsinkrate(ztop, tot_sink, cth_bin, rfv_nrm, dh=10.0)
     # satellite coordinate --> da/dh
     da_dh = rfv_nrm[:] / dh
     # interpolate satellite a(h) to unique h_sink coordinate
-    da_dh_to_sink = linear_interpolation((cth_bin*1e3,), da_dh).(hm) 
+    da_dh_to_sink = linear_interpolation((cth_bin,), da_dh).(hm) 
     da_dsink = da_dh_to_sink .* -dh_dsink[ii] # truncates just to useful sink_rate bins
     # println("sum(ii) = $(sum(ii))")
     da_dsink, findall(ii) # return the indices too

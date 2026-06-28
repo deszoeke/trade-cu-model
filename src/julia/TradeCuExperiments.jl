@@ -210,7 +210,7 @@ function cloud_i_area( ctx )
     cth_bin=ctx.cth_bin
     rfv_acc=ctx.rfv_acc
     # align z grid with fractions
-    offset = findfirst(x->x≈cth_bin[1]*1e3, z) - 1 # offset for 10 m bins
+    offset = findfirst(x->x≈cth_bin[1], z) - 1 # offset for 10 m bins
     a_i = zeros(nz)
     # cloud with qc=0 at h_i diverges below between h_(i-1) and h_i
     a_i[offset+1 .+ eachindex(rfv_acc[1:end-1])] .= -diff(rfv_acc)
@@ -234,7 +234,7 @@ function calc_Ftot(; ctx::ModelContext,
     rhoL = ctx.rhoL
 
     # align cth data; cth_bin starts at z=500
-    offset = findfirst(x->x≈cth_bin[1]*1e3, z) - 1 # 50
+    offset = findfirst(x->x≈cth_bin[1], z) - 1 # 50
 
     # cloud base water flux from vapor and precipitation flux
     # rhb_prate = mean(skipmissing(psl["prate"][:])) / 3600
@@ -331,7 +331,7 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
         jj = @. ( !ismissing(exp.input.cth_acc) && !ismissing(exp.input.cth_bin) )
         ii = @. ( !ismissing(ztop) )
         acld = fill(NaN, length(ztop))
-        acld[ii] = interpolate_ascending(1e3*exp.input.cth_bin[jj], exp.input.cth_nrm[jj]).(ztop[ii])
+        acld[ii] = interpolate_ascending(exp.input.cth_bin[jj], exp.input.cth_nrm[jj]).(ztop[ii])
         # acld is cloud fraction assigned to each sink rate bin -- not quite conservative
     else
         # direct assignment if sink rate bins are the same as z grid
