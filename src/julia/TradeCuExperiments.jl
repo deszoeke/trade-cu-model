@@ -120,9 +120,10 @@ end
 
 allocate_output(nz,ns) = ModelOutput( 
     Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-    Vector{Union{Missing, Float64}}(missing,    ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
+    Vector{Union{Missing, Float64}}(missing,    ns), Vector{Union{Missing, Float64}}(missing,    ns), 
     Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
-    Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns) )
+    Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
+    Matrix{Union{Missing, Float64}}(missing, nz,ns) )
 
 "initialize experiments with input parameters and empty output structures"
 function define_experiments(; ctx::ModelContext)
@@ -204,13 +205,14 @@ end
 #             allocate_output(nz,nz) ) # note nz,nz
 # end
 
+"gets GOES area for nearest cloud top height"
 function cloud_i_area( ctx )
     z=ctx.z
     nz = length(ctx.z)
     cth_bin=ctx.cth_bin
     rfv_acc=ctx.rfv_acc
     # align z grid with fractions
-    offset = findfirst(x->x≈cth_bin[1], z) - 1 # offset for 10 m bins
+    offset = findfirst(x-> abs(x-cth_bin[1]) < 1.0, z) - 1 # offset for 10 m bins
     a_i = zeros(nz)
     # cloud with qc=0 at h_i diverges below between h_(i-1) and h_i
     a_i[offset+1 .+ eachindex(rfv_acc[1:end-1])] .= -diff(rfv_acc)
@@ -234,7 +236,12 @@ function calc_Ftot(; ctx::ModelContext,
     rhoL = ctx.rhoL
 
     # align cth data; cth_bin starts at z=500
-    offset = findfirst(x->x≈cth_bin[1], z) - 1 # 50
+    offset = findfirst(z .>= cth_bin[1]-1.0) - 1 # 50
+    # println("cth_bin[1] = $(cth_bin[1]), z[51] = $(z[51]), offset = $(offset)")
+
+    ( qm, qs, zcb, qcb, E_cb, x, divg, 
+        tot_sink, cth_bin, rfv_acc, rfv_nrm, 
+        rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx)
 
     # cloud base water flux from vapor and precipitation flux
     # rhb_prate = mean(skipmissing(psl["prate"][:])) / 3600
@@ -310,6 +317,7 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
         qm=exp.input.qm, qs=exp.input.qs, allskyeddyflux=G_ls, 
         icb=findfirst(z.>=exp.input.zcb), qcb=exp.input.qcb,
         cth_bin=exp.input.cth_bin, cth_nrm=exp.input.cth_nrm)
+    da_ind = eachindex(exp.input.tot_sink)
 
     # get sink rate as a function of cloud top height
     # postprocess to get w, a, M, ...
@@ -321,29 +329,34 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     # da/dsinkrate = da/dh * dh/dsinkrate.
 
     # interpolate cloud area fraction to sink rate bins
-    if length(exp.input.tot_sink) != length(ctx.z)
+    if false && length(exp.input.tot_sink) != length(ctx.z)
         # sloppily interpolate from the cloud top height bins to the sink rate bins
         # da_dsink, da_ind = dadsinkrate(zt, exp.input.tot_sink, exp.input.cth_bin, exp.input.cth_nrm)
         # acld = ctx.dsink * da_dsink # cloud area fraction in sink rate bin; BROKEN
-        # improve by using interp_cloudtop_height to get a more accurate mapping of cloud top height to sink rate.
-        da_ind = eachindex(exp.input.tot_sink)
+        # now improve by using interp_cloudtop_height to get a more accurate mapping of cloud top height to sink rate.
         ztop = interp_cloudtop_height(ctx.z, exp.output.qc .- exp.input.qs) # ztop in descending order, a fcn of sink rate
         jj = @. ( !ismissing(exp.input.cth_acc) && !ismissing(exp.input.cth_bin) )
         ii = @. ( !ismissing(ztop) )
         acld = fill(NaN, length(ztop))
         acld[ii] = interpolate_ascending(exp.input.cth_bin[jj], exp.input.cth_nrm[jj]).(ztop[ii])
         # acld is cloud fraction assigned to each sink rate bin -- not quite conservative
-    else
+    elseif false
         # direct assignment if sink rate bins are the same as z grid
-        da_ind = eachindex(exp.input.tot_sink)
         acld = cloud_i_area(ctx) # cloud area fraction in sink rate & cloud top height bin i
     end
+
+    println("size(acld)=$(size(acld))") # (600,) or (3100,)
+    println("size(ztop)=$(size(ztop))") # (600,) or (3100,)
+    println("sum(x-> !ismissing(x) && isfinite(x), qcld)=$(sum(x-> !ismissing(x) && isfinite(x), qcld))") # 3100 x (600 or 300)
+    println("sum(x-> !ismissing(x) && isfinite(x), F_cld)=$(sum(x-> !ismissing(x) && isfinite(x), F_cld))") # 3100 x (600 or 300)
 
     M = F_cld ./ (qcld.-exp.input.qm) # cloud mass flux [z, sink rate]
     w = M ./ acld' # updraft velocity [z, sink rate]
 
-    println("size(w)=$(size(w))") # (3100, 600) or (3100, 3100)
+    # println("size(w)=$(size(w))") # (3100, 600) or (3100, 3100)
+    # println("da_ind = $(da_ind)") # OK
     exp.output.acld[da_ind] .= acld
+    exp.output.ztop[da_ind] .= ztop
     exp.output.M[:,da_ind] .= M
     exp.output.w[:,da_ind] .= w
     exp.output.qc .= qcld

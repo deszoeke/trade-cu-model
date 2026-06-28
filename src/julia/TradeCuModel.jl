@@ -314,6 +314,7 @@ struct ModelOutput
     M::Matrix{Union{U, Missing}} where U<:Number
     w::Matrix{Union{U, Missing}} where U<:Number
     acld::Vector{Union{U, Missing}} where U<:Number
+    ztop::Vector{Union{U, Missing}} where U<:Number # add simulated cloud top for each sink rate
     qc::Matrix{Union{U, Missing}} where U<:Number
     F_cld::Matrix{Union{U, Missing}} where U<:Number
     F_pcp::Matrix{Union{U, Missing}} where U<:Number
@@ -465,7 +466,7 @@ end
 # "terminate the cloud at ql<=0"
 # findcloudtop(ql, z; zcb=2000) = findfirst(ql .<= 0 .&& z .> zcb )
 
-"terminate the cloud either at ql=0 or at the elevated minimum ql in the trade inversion"
+"terminate the cloud on the grid either at ql=0 or at the elevated minimum ql in the trade inversion"
 function findcloudtop(ql, z; zcb, ist=findfirst(z .>= 2000), ien=findfirst(z .>= 5000))
     ql = coalesce.(ql, NaN)
     if all(isnan, ql)
@@ -720,28 +721,28 @@ end
 # da_dsink = dadsinkrate(zt53, tot_sink, cth_bin, rfv_nrm)
 
 # Find the total sink rate at which the cloud top reaches each z in the grid.
-"""
-    find_contour!(X_out, x, y, q, c)
-where q=c for each y in the grid. X_out has dimensions of y.
-"""
-function find_contour!(X_out, x, q, c)
-    Nx, Ny = size(q)
-    peaks = [argmax([ismissing(v) || isnan(v) ? -Inf : v for v in q[i, :]]) for i in 1:Nx]
-
-    for j in 1:Ny
-        idx = searchsortedlast(reverse(@view q[:, j]), c)
-        (idx == 0 || idx == Nx) && continue
-        i = Nx - idx # index in verso
-        if j > peaks[i] && !isnan(q[i,j]) && !isnan(q[i+1,j])
-            X_out[j] = x[i] + (x[i+1] - x[i]) * (c - q[i,j]) / (q[i+1,j] - q[i,j])
-        end
-    end
-end
-function find_contour(x,y, q, c=0) # returning wrapper
-    X_out = Vector{Float64}(missing, length(y))
-    find_contour!(X_out, x, q, c)
-    return X_out
-end
+# """
+#     find_contour!(X_out, x, y, q, c)
+# where q=c for each y in the grid. X_out has dimensions of y.
+# """
+# function find_contour!(X_out, x, q, c)
+#     Nx, Ny = size(q)
+#     peaks = [argmax([ismissing(v) || isnan(v) ? -Inf : v for v in q[i, :]]) for i in 1:Nx]
+#
+#     for j in 1:Ny
+#         idx = searchsortedlast(reverse(@view q[:, j]), c)
+#         (idx == 0 || idx == Nx) && continue
+#         i = Nx - idx # index in verso
+#         if j > peaks[i] && !isnan(q[i,j]) && !isnan(q[i+1,j])
+#             X_out[j] = x[i] + (x[i+1] - x[i]) * (c - q[i,j]) / (q[i+1,j] - q[i,j])
+#         end
+#     end
+# end
+# function find_contour(x,y, q, c=0) # returning wrapper
+#     X_out = Vector{Float64}(missing, length(y))
+#     find_contour!(X_out, x, q, c)
+#     return X_out
+# end
 # interpolate the total sink rate that gives cloud top at each z.
 # iz = findall(zcb .< z .<= ztop)
 # sinkz = Vector{Float64}(missing, length(z))

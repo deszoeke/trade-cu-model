@@ -29,13 +29,14 @@ end
 PythonPlot.matplotlib.rcParams["font.family"] = "sans-serif"
 PythonPlot.matplotlib.rcParams["font.sans-serif"] = ["Helvetica", "Arial", "OpenSans"]
 
-include("TradeCuExperiments.jl")
+includet("TradeCuExperiments.jl")
 using .TradeCuExperiments
 
+interp_cloudtop_height = TradeCuModel.interp_cloudtop_height # testing this
 
 # experiment with sink rate fixed by the control
 # ctx, ExpDict, controlsink, sinkm5, sinkp5 = TradeCuExperiments.test_control_sink() # not needed in REPL
-ctx, ExpDict, controlsink, sinkm5, sinkp5 = test_control_sink()
+ctx, ExpDict, controlsink, sinkm5, sinkp5 = test_control_sink();
 
 # load standard parameters
 ( qm, qs, zcb, qcb, E_cb, x, divg, 
@@ -46,7 +47,7 @@ controlsink.output.acld
 ztop = ctx.z/1e3
 acc = cumsum(controlsink.output.acld)
 
-# mesoscale DIM experiments
+# DIM experiments with different sink rates, to simulate mesoscale organization changes
 DIMsink = define_experiment(; 
     name="DIMsink",
     description="DIM sink rate, cloud tops align with z grid",
@@ -80,10 +81,13 @@ for exp in [DIMsink, DIMsinkm5, DIMsinkp5]
     push!(ExpDict, exp.name => exp)
 end
 
-
 "plot cloud vertical velocity for an experiment"
 function plot_exp_w(e, ctx=ctx)
-    pcolormesh(ctx.z[51:350]/1e3,ctx.z[51:350]/1e3, e.output.w[51:350,51:350], 
+    ztop = interp_cloudtop_height(ctx.z, e.output.qc .- e.input.qs)
+    iz = findall(500.0 .<= ctx.z .<= 3500.0) # 10 m bins, z=500 m
+    ik = findall(x-> !ismissing(x) && isfinite(x), ztop) # tot_sink -> ztop
+
+    pcolormesh(ztop[ik]/1e3, ctx.z[iz]/1e3, e.output.w[iz,ik], 
         cmap=ColorMap("BuPu")) #, vmin=0.0, vmax=5)
     colorbar()
     ylim([0.5, 3.5]); xlim([0.5, 3.5])
@@ -96,8 +100,12 @@ end
 
 "plot cloud liquid for an experiment"
 function plot_exp_qc(e, ctx=ctx)
+    ztop = interp_cloudtop_height(ctx.z, e.output.qc .- e.input.qs) # recomputing here works
     ql = calc_ql(e)
-    pcolormesh(ctx.z[51:350]/1e3,ctx.z[51:350]/1e3, ql[51:350,51:350]*1e3, 
+    iz = findall(500.0 .<= ctx.z .<= 3500.0) # 10 m bins, z=500 m
+    ik = findall(x-> !ismissing(x) && isfinite(x), ztop) # tot_sink -> ztop
+
+    pcolormesh(ztop[ik]/1e3, ctx.z[iz]/1e3, ql[iz,ik]*1e3, 
         cmap=get_cmap("BuPu",10), vmin=0.0, vmax=2.0)
     colorbar()
     ylim([0.5, 3.5]); xlim([0.5, 3.5])
@@ -111,19 +119,19 @@ end
 # plot cloud w
 clf() 
 subplot(2,3,1)
-plot_exp_w(controlsink, ctx)
+plot_exp_w(ExpDict["control"], ctx)
 plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
 title("control")
 gca().set_aspect("equal")
 subplot(2,3,2)
-plot_exp_w(sinkm5, ctx)
+plot_exp_w(ExpDict["subsidence-5%"], ctx)
 plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title("sink rate -5%")
+title("subsidence -5%")
 gca().set_aspect("equal")
 subplot(2,3,3)
-plot_exp_w(sinkp5, ctx)
+plot_exp_w(ExpDict["subsidence+5%"], ctx)
 plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title("sink rate +5%")
+title("NO EXPERIMENT: subsidence +5%")
 gca().set_aspect("equal")
 suptitle("cloud vertical velocity (m/s)")
 tight_layout()
@@ -135,19 +143,19 @@ end
 # plot cloud qc liquid
 # clf() 
 subplot(2,3,4)
-plot_exp_qc(controlsink)
+plot_exp_qc(ExpDict["control"], ctx)
 plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title("control sink rate")
+title("control")
 gca().set_aspect("equal")
 subplot(2,3,5)
-plot_exp_qc(sinkm5)
+plot_exp_qc(ExpDict["subsidence-5%"], ctx)
 plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title("sink rate -5%")
+title("subsidence -5%")
 gca().set_aspect("equal")
 subplot(2,3,6)
-plot_exp_qc(sinkp5)
+plot_exp_qc(ExpDict["subsidence+5%"], ctx)
 plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title("sink rate +5%")
+title("NO EXPERIMENT: subsidence +5%")
 gca().set_aspect("equal")
 suptitle("cloud vertical velocity (m/s), cloud liquid (g/kg)")
 tight_layout()
