@@ -345,8 +345,8 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
         acld = cloud_i_area(ctx) # cloud area fraction in sink rate & cloud top height bin i
     end
 
-    println("size(acld)=$(size(acld))") # (600,) or (3100,)
-    println("size(ztop)=$(size(ztop))") # (600,) or (3100,)
+    # println("size(acld)=$(size(acld))") # (600,) or (3100,)
+    # println("size(ztop)=$(size(ztop))") # (600,) or (3100,)
     println("sum(x-> !ismissing(x) && isfinite(x), qcld)=$(sum(x-> !ismissing(x) && isfinite(x), qcld))") # 3100 x (600 or 300)
     println("sum(x-> !ismissing(x) && isfinite(x), F_cld)=$(sum(x-> !ismissing(x) && isfinite(x), F_cld))") # 3100 x (600 or 300)
 

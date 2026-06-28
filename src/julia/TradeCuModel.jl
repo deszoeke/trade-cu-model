@@ -659,7 +659,7 @@ function compute_normalized_fluxes(tot_sink=tot_sink; x=x,
     ns = length(tot_sink)
     Fcld = Array{ Union{Missing, Float64},2}(missing, nz, ns)
     Fp   = Array{ Union{Missing, Float64},2}(missing, nz, ns)
-    ztop = Vector{Union{Missing, Float64}}(missing, ns)
+    ztop = Vector{Union{Missing, Float64}}(missing, ns) # grid, not interpolated
 
     for ia in eachindex(tot_sink)
         ae = tot_sink[ia]
@@ -688,15 +688,18 @@ function cloudflux_allsky(tot_sink=tot_sink; x=x,
     cth_bin, cth_nrm)
     
     _, qtc = cloud_qt(tot_sink; x=x, z=z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, icb=icb, qcb=qcb)
-    ztop = interp_cloudtop_height(z, qtc.-qs) # reinterpolate cloud top height from qd=qt-qs
+    ztop = interp_cloudtop_height(z, qtc.-qs) # interpolate cloud top height from qd=qt-qs
     ii = @. ( !ismissing(ztop) )
     a_i = fill(NaN, length(ztop))
     jj = @. ( !ismissing(cth_nrm) && !ismissing(cth_bin) )
-    a_i[ii] = interpolate_ascending(1e3*coalesce.(cth_bin[jj],NaN), 
-                                        coalesce.(cth_nrm[jj],NaN) ).(ztop[ii]) # interpolate cloud fraction for each cloud category i
-    Feddy_i = allskyeddyflux ./ permutedims(a_i);
-    
+    a_i[ii] = interpolate_ascending(coalesce.(cth_bin[jj],NaN), 
+                                    coalesce.(cth_nrm[jj],NaN) ).(ztop[ii]) # interpolate cloud fraction for each cloud category i
+    Feddy_i = allskyeddyflux ./ permutedims(a_i)
+    # println("size(Feddy_i) = $(size(Feddy_i))") # dims OK
+    println("sum(isfinite, skipmissing(Feddy_i)) = $(sum(isfinite, skipmissing(Feddy_i)))")
     Ncld, Np = compute_normalized_fluxes(tot_sink; x=x, z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, qtc=qtc, icb=icb, qcb=qcb)
+    # println("size(Ncld) = $(size(Ncld)), size(Np) = $(size(Np))") # dims OK
+
     Fcld = Ncld .* Feddy_i
     Fp = Np .* Feddy_i
 
