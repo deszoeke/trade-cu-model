@@ -42,10 +42,15 @@ ctx, ExpDict, controlsink, sinkm5, sinkp5 = test_control_sink();
 ( qm, qs, zcb, qcb, E_cb, x, divg, 
     tot_sink, cth_bin, rfv_acc, rfv_nrm, 
     rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx)
-sinkz = controlsink.input.tot_sink
-controlsink.output.acld
-ztop = ctx.z/1e3
-acc = cumsum(controlsink.output.acld)
+# Get matched total sink rate and cloud top ensemble from control experiment
+# aligned with the z grid for use in experiments.
+# controlsink.output.acld # cloud fractions interpolated to ztop = z grid
+function good_sinks(controlsink; zb=700.0, zt=4000.0)
+    ii = findall(x-> zb<=x<=zt, ctx.z)
+    (ctx.z[ii], controlsink.input.tot_sink[ii], 
+     cumsum(controlsink.output.acld)[ii], controlsink.output.acld[ii])
+end
+ztop, sinkz, acc, acld = good_sinks(controlsink)
 
 # DIM experiments with different sink rates, to simulate mesoscale organization changes
 DIMsink = define_experiment(; 
@@ -58,22 +63,26 @@ DIMsink = define_experiment(;
     E_cb=1.02*E_cb,
     x=x,
     divg=0.95*divg,
-    tot_sink=sinkz,
-    cth_bin=ztop,
-    rfv_acc=acc,
-    rfv_nrm=controlsink.output.acld );
+    tot_sink=reverse(sinkz), # sinkz increases
+    cth_bin= reverse(ztop),   # ztop decreases
+    rfv_acc= reverse(acc),
+    rfv_nrm= reverse(acld) );
 DIMsinkm5 = define_experiment(; 
     name="DIMsink-5%", description="DIM sink rate -5%",
     qm= (1 .- 0.95*(1 .- qm./qs)).*qs*1.07, qs=1.07*qs, zcb=zcb,
     qcb=1.07*qcb, E_cb=1.02*E_cb, x=x, divg=0.95*divg,
-    tot_sink=sinkz*0.95,
-    cth_bin=ztop, rfv_acc=acc, rfv_nrm=controlsink.output.acld ); # how to specify the cloud fraction?
-DIMsinkp5 = define_experiment(; 
+    tot_sink=reverse(sinkz*0.95),
+    cth_bin= reverse(ztop),
+    rfv_acc= reverse(acc), 
+    rfv_nrm= reverse(acld) ); # how to specify the cloud fraction?
+DIMsinkp5 = define_experiment(;
     name="DIMsink+5%", description="DIM sink rate +5%",
     qm= (1 .- 0.95*(1 .- qm./qs)).*qs*1.07, qs=1.07*qs, zcb=zcb,
     qcb=1.07*qcb, E_cb=1.02*E_cb, x=x, divg=0.95*divg,
-    tot_sink=sinkz*1.05,
-    cth_bin=ztop, rfv_acc=acc, rfv_nrm=controlsink.output.acld );
+    tot_sink=reverse(sinkz*1.05),
+    cth_bin= reverse(ztop),
+    rfv_acc= reverse(acc), 
+    rfv_nrm= reverse(acld) );
 # integrate
 for exp in [DIMsink, DIMsinkm5, DIMsinkp5]
     println(exp.name)
@@ -150,7 +159,7 @@ gca().set_aspect("equal")
 subplot(2,3,5)
 plot_exp_qc(ExpDict["subsidence-5%"], ctx)
 plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title("subsidence -5%")
+title("SAME CLOUDS: subsidence -5%")
 gca().set_aspect("equal")
 subplot(2,3,6)
 plot_exp_qc(ExpDict["subsidence+5%"], ctx)

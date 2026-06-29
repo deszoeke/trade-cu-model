@@ -570,8 +570,11 @@ function interp_sinkrate( e::Experiment; ctx::ModelContext )
     qd = e.output.qc .- e.input.qs
     ztop = interp_cloudtop_height(z, qd) # ztop is in descending order
     ii = .!ismissing.(ztop) # filter missing, let NaN thru
-    println("size(ii) = $(size(ii))")
-    sinkz = interpolate_descending(coalesce.(ztop[ii], NaN), coalesce.(tot_sink[ii], NaN)).(z) # evaluate the interpolator
+    # println("size(ii) = $(size(ii))")
+    # evaluate the interpolator; extrapolates on the low end!
+    sinkz = interpolate_descending(coalesce.(ztop[ii], NaN), coalesce.(tot_sink[ii], NaN)).(z)
+    sinkz[sinkz .< 0.7*minimum(tot_sink)] .= NaN # retain a little extrapolation
+    return sinkz
 end
 # implementation: search above iz = 74 (730 m)
 
@@ -671,9 +674,11 @@ function compute_normalized_fluxes(tot_sink=tot_sink; x=x,
             ztop[ia] = z[itop] # ztop can be up to 20 km
             if !deep_cloud(ql,z) # compute normalized flux profiles
                 Fp[:,ia] .= -precipflux_down( x, ae, ones(nz), ql, qt, qm, istart=itop, icb=icb, dz=dz )
+                Fp[(itop+1):end,ia] .= missing
                 # cloud updraft flux
                 #          =toteddy - precip
-                Fcld[:,ia] .= 1.0 .- Fp[:,ia] 
+                Fcld[:,ia] .= missing
+                Fcld[icb:itop,ia] .= 1.0 .- Fp[icb:itop,ia]
             end
         end
     end
@@ -695,10 +700,8 @@ function cloudflux_allsky(tot_sink=tot_sink; x=x,
     a_i[ii] = interpolate_ascending(coalesce.(cth_bin[jj],NaN), 
                                     coalesce.(cth_nrm[jj],NaN) ).(ztop[ii]) # interpolate cloud fraction for each cloud category i
     Feddy_i = allskyeddyflux ./ permutedims(a_i)
-    # println("size(Feddy_i) = $(size(Feddy_i))") # dims OK
     println("sum(isfinite, skipmissing(Feddy_i)) = $(sum(isfinite, skipmissing(Feddy_i)))")
     Ncld, Np = compute_normalized_fluxes(tot_sink; x=x, z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, qtc=qtc, icb=icb, qcb=qcb)
-    # println("size(Ncld) = $(size(Ncld)), size(Np) = $(size(Np))") # dims OK
 
     Fcld = Ncld .* Feddy_i
     Fp = Np .* Feddy_i
