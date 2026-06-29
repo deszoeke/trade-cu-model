@@ -233,69 +233,7 @@ function cloud_i_area( exp::Experiment; ctx::ModelContext )
     return a_i
 end
 
-"large scale moisture flux profile distributed to clouds top height bins"
-function calc_Ftot(; ctx::ModelContext,
-                     E_cb, # W/m^2; just the cloud vapor flux; E0 - 35?
-                     rhb_prate=8.88e-6, # kg/s
-                     divg,
-                     qm,
-                     cth_bin,
-                     cth_acc,
-                     dz=ctx.dz,
-                     icb=findfirst(ctx.z .>= ctx.zcb) )
-
-    z = ctx.z
-    zi = ctx.zi     # 4000 m, top of valid trade cu grid
-    ztop = ctx.ztop # also 4000 m
-    rhoL = ctx.rhoL
-
-    # align cth data; cth_bin starts at z=500
-    offset = findfirst(z .>= cth_bin[1]-1.0) - 1 # 50
-    # println("cth_bin[1] = $(cth_bin[1]), z[51] = $(z[51]), offset = $(offset)")
-
-    ( qm, qs, zcb, qcb, E_cb, x, divg, 
-        tot_sink, cth_bin, rfv_acc, rfv_nrm, 
-        rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx)
-
-    # cloud base water flux from vapor and precipitation flux
-    # rhb_prate = mean(skipmissing(psl["prate"][:])) / 3600
-    # all sky _total_ flux at cloud base
-    calc_cloud_mean(s,z) = mean(skipmissing(tmean(s)[z.<=ztop])) # 286.6K = mean Cu layer temperature
-    G_cb = E_cb/rhoL - rhb_prate
-
-    # specify the LS drying source profile due to
-    # subsidence and advection
-    "large scale subsidence vertical velocity (m/s)"
-    subsidence(z; divg=divg, zi=zi) = -min(z,zi) * divg # <0
-    # ^ negate on rhs
-    # large scale drying moisture source
-    function largescale_drying(q,z)
-        wdqdz = subsidence.(z[1:end-1]) .* ddz(q,z)
-        S_ls = -wdqdz .- 1.7e-8*max.(0, (4e3.-z[1:end-1])/4e3) 
-    end
-
-    # define LS source
-    S_ls = largescale_drying(qm,z)
-
-    # Total all-sky flux G with cloud base BC
-    G = Array{Union{Float64, Missing}}(missing, size(qm))
-    G[icb:end] = G_cb .+ vcat(0, cumsum( S_ls[icb:end] ) * dz)
-
-    F2 = calcF2(G, cth_acc, offset; sk=1) # divvies flux into cloud top height bins
-
-    # coarsen bin size to 100 m
-    # F2c = calcF2(G, cth_acc, offset; sk=10)
-    # mean not weighted by area:
-    # F2m = mean(skipmissing(nisf2m.(F2)))
-    # mean weighted by area:
-    # F2m = sum( skipmissing(nisf2m.(F2) .* rfv_nrm[1:end-1]) ) / sum( rfv_nrm )
-
-    # align F2 to cloud model z grid
-    F2z = Array{Union{Missing, Float64}}(missing, size(qm))
-    F2z[offset.+eachindex(F2)] .= F2[:] 
-    # needs to be masked with 0 above cloud top
-    return F2z, G
-end
+# Use calc_Ftot(...) directly for flux diagnostics.
 
 # The in-cloud moisture flux F_i (due to cloud updraft + precipitation) for cloud i with area fraction a_i is constant from cloud base to cloud top height h_i. The all-sky eddy flux is G = sum{F_i a_i}. The total cloud area is a = sum{a_i}. The updraft flux for cloud i is Fcld_i = M_i (\Delta q)_i. The mass flux is M_i = w_i a_i. The total moisture flux F_i = Fcld_i + Fp_i is the sum of the updraft (positive, upward) and precipitation (negative, downward) fluxes. We have the all sky flux from large-scale balance; partition it to the total eddy flux F_i according to a_i of each cloud top height h_i, then decompose to M_i and w_i. 
 # refine the sink rate and cloud top height interpolation
@@ -309,14 +247,6 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     z = ctx.z
     dz = ctx.dz
 
-    # compute cloud+precipitation moisture flux that balances large scale drying
-    # ! independent of clouds !
-    F2z, G_ls = calc_Ftot( ctx=ctx, E_cb=exp.input.E_cb, divg=exp.input.divg,
-        qm=exp.input.qm, 
-        cth_bin=exp.input.cth_bin, cth_acc=exp.input.cth_acc, 
-        dz=dz, icb=findfirst(z .>= exp.input.zcb) )
-    # Flux is distributed to the clouds by their cloud top height distribution.
-
     # run the cloud model for many sink rates
     # ! qcld is independent of fluxes !
     # zt, F_cld, F_pcp, qcld = cloudflux_1x(
@@ -329,7 +259,10 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
 
     ztop, F_cld, F_pcp, qcld, acld = cloudflux_allsky(exp.input.tot_sink; 
         x=exp.input.x, z=z, nz=length(z), dz=z[2]-z[1],
-        qm=exp.input.qm, qs=exp.input.qs, allskyeddyflux=G_ls, 
+        qm=exp.input.qm, qs=exp.input.qs,
+        divg=exp.input.divg, E_cb=exp.input.E_cb,
+        cth_acc=exp.input.cth_acc, rhoL=ctx.rhoL,
+        zi=ctx.zi, zcb=exp.input.zcb,
         icb=findfirst(z.>=exp.input.zcb), qcb=exp.input.qcb,
         cth_bin=exp.input.cth_bin, cth_nrm=exp.input.cth_nrm)
     da_ind = eachindex(exp.input.tot_sink)
@@ -366,8 +299,11 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     println("sum(x-> !ismissing(x) && isfinite(x), qcld)=$(sum(x-> !ismissing(x) && isfinite(x), qcld))") # 3100 x (600 or 300)
     println("sum(x-> !ismissing(x) && isfinite(x), F_cld)=$(sum(x-> !ismissing(x) && isfinite(x), F_cld))") # 3100 x (600 or 300)
 
-    M = F_cld ./ (qcld.-exp.input.qm) # in-cloud mass flux [z, sink rate]
-    w = copy(M) # in-cloud updraft velocity estimate [z, sink rate]
+    dq = qcld .- exp.input.qm
+    # fluxes are described as total vs. category i; and separately as in-cloud vs. all-sky.
+    # F_cld is in-cloud moisture flux [z, sink rate]; Fcld = M * dq; M = w * a
+    w = F_cld ./ dq           # in-cloud plume velocity [z, sink rate]
+    M = w .* acld'            # all-sky mass flux M_i = a_i * w_i [z, sink rate]
     for i in axes(w,2)
         zi = ztop[i]
         if !ismissing(zi)

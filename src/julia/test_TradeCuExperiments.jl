@@ -64,25 +64,25 @@ DIMsink = define_experiment(;
     x=x,
     divg=0.95*divg,
     tot_sink=reverse(sinkz), # sinkz increases
-    cth_bin= reverse(ztop),   # ztop decreases
-    rfv_acc= reverse(acc),
-    rfv_nrm= reverse(acld) );
+    cth_bin= ztop,
+    rfv_acc= acc,
+    rfv_nrm= acld );
 DIMsinkm5 = define_experiment(; 
     name="DIMsink-5%", description="DIM sink rate -5%",
     qm= (1 .- 0.95*(1 .- qm./qs)).*qs*1.07, qs=1.07*qs, zcb=zcb,
     qcb=1.07*qcb, E_cb=1.02*E_cb, x=x, divg=0.95*divg,
     tot_sink=reverse(sinkz*0.95),
-    cth_bin= reverse(ztop),
-    rfv_acc= reverse(acc), 
-    rfv_nrm= reverse(acld) ); # how to specify the cloud fraction?
+    cth_bin= ztop,
+    rfv_acc= acc, 
+    rfv_nrm= acld ); # how to specify the cloud fraction?
 DIMsinkp5 = define_experiment(;
     name="DIMsink+5%", description="DIM sink rate +5%",
     qm= (1 .- 0.95*(1 .- qm./qs)).*qs*1.07, qs=1.07*qs, zcb=zcb,
     qcb=1.07*qcb, E_cb=1.02*E_cb, x=x, divg=0.95*divg,
     tot_sink=reverse(sinkz*1.05),
-    cth_bin= reverse(ztop),
-    rfv_acc= reverse(acc), 
-    rfv_nrm= reverse(acld) );
+    cth_bin= ztop,
+    rfv_acc= acc, 
+    rfv_nrm= acld );
 # integrate
 for exp in [DIMsink, DIMsinkm5, DIMsinkp5]
     println(exp.name)
@@ -91,13 +91,29 @@ for exp in [DIMsink, DIMsinkm5, DIMsinkp5]
 end
 
 "plot cloud vertical velocity for an experiment"
-function plot_exp_w(e, ctx=ctx)
+function plot_exp(e, var, ctx=ctx)
     ztop = interp_cloudtop_height(ctx.z, e.output.qc .- e.input.qs)
     iz = findall(500.0 .<= ctx.z .<= 3500.0) # 10 m bins, z=500 m
     ik = findall(x-> !ismissing(x) && isfinite(x), ztop) # tot_sink -> ztop
-
-    pcolormesh(ztop[ik]/1e3, ctx.z[iz]/1e3, e.output.w[iz,ik], 
+    q = getfield(e.output, var)
+    pcolormesh(ztop[ik]/1e3, ctx.z[iz]/1e3, q[iz,ik], 
         cmap=ColorMap("BuPu")) #, vmin=0.0, vmax=5)
+    colorbar()
+    ylim([0.5, 3.5]); xlim([0.5, 3.5])
+    xlabel("cloud top height (km)")
+    ylabel("z coordinate (km)")
+    title("$(e.name) $(string(var))")
+    gca().set_aspect("equal")
+end
+
+"plot cloud vertical velocity for an experiment"
+function plot_exp_w(e, ctx=ctx; kwargs...)
+    ztop = interp_cloudtop_height(ctx.z, e.output.qc .- e.input.qs)
+    iz = findall(500.0 .<= ctx.z .<= 3500.0) # 10 m bins, z=500 m
+    ik = findall(x-> !ismissing(x) && isfinite(x), ztop) # tot_sink -> ztop
+    log_norm = PythonPlot.matplotlib.colors.LogNorm(vmin=minimum(0.001), vmax=maximum(5))
+    pcolormesh(ztop[ik]/1e3, ctx.z[iz]/1e3, e.output.w[iz,ik], 
+        cmap=ColorMap("BuPu")) #, norm=log_norm, kwargs...)
     colorbar()
     ylim([0.5, 3.5]); xlim([0.5, 3.5])
     xlabel("cloud top height (km)")
@@ -108,25 +124,26 @@ function plot_exp_w(e, ctx=ctx)
 end
 
 "plot cloud liquid for an experiment"
-function plot_exp_qc(e, ctx=ctx)
+function plot_exp_qc(e, ctx=ctx; kwargs...)
     ztop = interp_cloudtop_height(ctx.z, e.output.qc .- e.input.qs) # recomputing here works
     ql = calc_ql(e)
     iz = findall(500.0 .<= ctx.z .<= 3500.0) # 10 m bins, z=500 m
     ik = findall(x-> !ismissing(x) && isfinite(x), ztop) # tot_sink -> ztop
 
     pcolormesh(ztop[ik]/1e3, ctx.z[iz]/1e3, ql[iz,ik]*1e3, 
-        cmap=get_cmap("BuPu",10), vmin=0.0, vmax=2.0)
+        cmap=get_cmap("BuPu",10), vmin=0.0, vmax=2.0, kwargs...)
     colorbar()
     ylim([0.5, 3.5]); xlim([0.5, 3.5])
     xlabel("cloud top height (km)")
     ylabel("z coordinate (km)")
     title("cloud liquid (g/kg)")
     gca().set_aspect("equal")
-    tight_layout()
+    # tight_layout()
 end
 
 # plot cloud w
-clf() 
+clf(); fig = figure()
+fig.set_size_inches([10, 5])
 subplot(2,3,1)
 plot_exp_w(ExpDict["control"], ctx)
 plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
@@ -138,16 +155,15 @@ plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
 title("subsidence -5%")
 gca().set_aspect("equal")
 subplot(2,3,3)
-plot_exp_w(ExpDict["subsidence+5%"], ctx)
+plot_exp_w(ExpDict["q&qs+7%"], ctx)
 plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title("NO EXPERIMENT: subsidence +5%")
+title("q and qs +7%")
 gca().set_aspect("equal")
 suptitle("cloud vertical velocity (m/s)")
 tight_layout()
-
-for f in ["png", "pdf", "svg"]
-    savefig("experiment_cloud_vertical_velocity.$f")
-end
+# for f in ["png", "pdf", "svg"]
+#     savefig("experiment_cloud_vertical_velocity.$f")
+# end
 
 # plot cloud qc liquid
 # clf() 
@@ -159,18 +175,72 @@ gca().set_aspect("equal")
 subplot(2,3,5)
 plot_exp_qc(ExpDict["subsidence-5%"], ctx)
 plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title("SAME CLOUDS: subsidence -5%")
+title("(same clouds) subsidence -5%")
 gca().set_aspect("equal")
 subplot(2,3,6)
-plot_exp_qc(ExpDict["subsidence+5%"], ctx)
+plot_exp_qc(ExpDict["q&qs+7%"], ctx)
 plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title("NO EXPERIMENT: subsidence +5%")
+title("q and qs +7%")
 gca().set_aspect("equal")
 suptitle("cloud vertical velocity (m/s), cloud liquid (g/kg)")
 tight_layout()
-for f in ["png", "pdf", "svg"]
-    savefig("experiment_cloud_liquid.$f")
-end
+# for f in ["png", "pdf", "svg"]
+#     savefig("experiment_cloud_liquid.$f")
+# end
+
+
+# plot the experiments where the cloud top height change
+# propagates to the flux partition.
+# plot cloud w
+expmts = ["control-sink", "DIMsink", "DIMsink-5%"]
+
+clf(); fig = figure(); fig.set_size_inches([10, 5])
+subplot(2,3,1)
+plot_exp_w(ExpDict[expmts[1]], ctx)
+plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
+title(expmts[1])
+gca().set_aspect("equal")
+subplot(2,3,2)
+plot_exp_w(ExpDict[expmts[2]], ctx)
+plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
+title(expmts[2])
+gca().set_aspect("equal")
+subplot(2,3,3)
+plot_exp_w(ExpDict[expmts[3]], ctx)
+plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
+title(expmts[3])
+gca().set_aspect("equal")
+suptitle("cloud vertical velocity (m/s)")
+tight_layout()
+# for f in ["png", "pdf", "svg"]
+#     savefig("experiment_cloud_vertical_velocity.$f")
+# end
+
+# plot cloud qc liquid
+# clf() 
+subplot(2,3,4)
+plot_exp_qc(ExpDict[expmts[1]], ctx)
+plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
+title(expmts[1])
+gca().set_aspect("equal")
+subplot(2,3,5)
+plot_exp_qc(ExpDict[expmts[2]], ctx)
+plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
+title(expmts[2])
+gca().set_aspect("equal")
+subplot(2,3,6)
+plot_exp_qc(ExpDict[expmts[3]], ctx)
+plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
+title(expmts[3])
+gca().set_aspect("equal")
+suptitle("cloud vertical velocity (m/s), cloud liquid (g/kg)")
+tight_layout()
+# for f in ["png", "pdf", "svg"]
+#     savefig("experiment_cloud_liquid.$f")
+# end
+
+
+
 
 """
 power law on log-log plot

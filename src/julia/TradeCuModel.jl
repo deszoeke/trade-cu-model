@@ -29,6 +29,7 @@ export ModelInput, ModelOutput, ModelContext, Experiment # types for experiment 
 export ddz, q_total, cloudflux!
 export precipflux_down!, precipflux_down, precipflux_down_sfc
 export calcF2
+export calc_G_allsky
 export cloudflux_1x, cloudflux_allsky
 export updraft_w_dq
 export dadsinkrate, find_contour!, interpolate_ascending, interpolate_descending
@@ -460,6 +461,89 @@ function calcF2(G, rfv_acc, offset; sk)
     return calcF2_(align2i(G), rfv_acc; sk=sk) # inputs not aligned
 end
 
+"""
+large-scale all-sky moisture flux profile total G_tot 
+and partition G_i to cloud-top categories i.
+"""
+function calc_G_allsky(ztop; z,
+    E_cb, # W/m^2; just the cloud vapor flux
+    rhb_prate=8.88e-6, # kg/s
+    divg,
+    qm,
+    cth_bin,
+    cth_acc,
+    rhoL,
+    zi=4000.0,
+    dz=z[2]-z[1],
+    zcb=700.0 )
+
+    # align cth data; cth_bin starts at z=500 m
+    # offset = findfirst(z .>= cth_bin[1]-1.0) - 1
+
+    # all-sky total flux at cloud base
+    G_cb = E_cb/rhoL - rhb_prate
+
+    nztop = length(ztop)
+    nztop == 0 && return Float64[], Float64[]
+
+    zt = coalesce.(ztop, NaN)
+    finite = isfinite.(zt)
+    valid = finite .& (zt .>= zcb)
+    any(finite .& (zt .< zcb)) && @warn "Some zt < zcb."
+
+    if !any(valid)
+        return fill(NaN, nztop), fill(NaN, nztop)
+    end
+
+    # large-scale subsidence vertical velocity (m/s)
+    subsidence(z_; divg=divg, zi=zi) = -min(z_, zi) * divg
+    "interpolate the derivative dq/dz at z_"
+    ddz(z_, q=qm,z=z) = interpolate_ascending( z[1:end-1].+0.5*diff(z), diff(q) ./ diff(z) )(z_)
+    "analytic large-scale drying profile S_ls(z) = -w*dq/dz - 1.7e-8*(zdivg-z)/zdivg"
+    function largescale_drying(q, z_)
+        zdivg = 4e3 # m; hardwired
+        wdqdz = subsidence(z_) .* ddz(z_)
+        -wdqdz - 1.7e-8 * max(0, (zdivg - z_) ./ zdivg) # tapers to surface
+    end
+    # function largescale_drying(q, z_)
+    #     zdivg = 4e3 # m; hardwired
+    #     wdqdz = subsidence.(z_[1:end-1]) .* ddz(q, z_)
+    #     -wdqdz .- 1.7e-8 .* max.(0, (zdivg .- z_[1:end-1]) ./ zdivg) # tapers to surface
+    # end
+
+    # S_ls = largescale_drying(qm, z)
+
+    # Total all-sky flux G with cloud-base boundary condition
+    nztop = length(ztop)
+    G_i   = Array{Union{Float64, Missing}}(missing, nztop)
+    G_tot = Array{Union{Float64, Missing}}(missing, nztop)
+
+    ii = findall(valid)
+    iis = ii[sortperm(zt[ii])]
+    S_ls_dz(z0,z1) = ( largescale_drying(qm, z0) + largescale_drying(qm, z1) ) * 0.5 * (z1-z0)
+    # G_i is eddy flux converging between z_i - z_i-1
+    # G_i(zcb) = 0.0 # at cloud base
+    dG = similarmissing((length(iis),), Float64)
+    dG[1] = S_ls_dz(zcb, zt[iis[1]]) # first cloud
+    dG[2:end] = S_ls_dz.(zt[iis[1:end-1]], zt[iis[2:end]]) # subsequent clouds
+    # G_tot is total all-sky eddy flux
+    # G_tot(zcb) = G_cb
+    G_i[iis] = .-dG
+    G_tot[iis] = G_cb .+ cumsum(dG)
+
+    # Partition all-sky flux to cloud-top categories using cth_acc
+    # F2 = calcF2(G, cth_acc, offset; sk=1)
+    # F2z = Array{Union{Missing, Float64}}(missing, size(qm))
+    # F2z[offset.+eachindex(F2)] .= F2[:]
+
+    # Convert to in-sky moisture flux assuming 
+    # (F2 method) vertically uniform flux in each 
+    # cloud category i.
+    # F_i = G_i ./ a_i
+
+    return G_i, G_tot
+end
+
 
 # iterate cloud model for F2z_i
 
@@ -619,7 +703,7 @@ function cloudflux_1x(tot_sink=tot_sink; x=x,
                 # Pcb[ia] = -Fp[icb,ia]
                 # cloud updraft flux
                 Fcld[:,ia] .= -Fp[:,ia] .+ F2z[itop]
-                # cloud        = -precip       eddy
+                # cloud     = -precip       eddy
             end
         end
     end
@@ -687,24 +771,83 @@ function compute_normalized_fluxes(tot_sink=tot_sink; x=x,
     Fcld, Fp # normalized by F2z
 end
 
-function cloudflux_allsky(tot_sink=tot_sink; x=x, 
-    z, nz=length(z), dz=z[2]-z[1],
-    qm=qm, qs=qs, allskyeddyflux, icb=icb, qcb=qcb,
-    cth_bin, cth_nrm)
-    
-    _, qtc = cloud_qt(tot_sink; x=x, z=z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, icb=icb, qcb=qcb)
-    ztop = interp_cloudtop_height(z, qtc.-qs) # interpolate cloud top height from qd=qt-qs
+"interpolate cloud fraction a_i for each cloud top height category i"
+function interp_a_i(ztop, cth_bin, cth_nrm)
     ii = @. ( !ismissing(ztop) )
     a_i = fill(NaN, length(ztop))
     jj = @. ( !ismissing(cth_nrm) && !ismissing(cth_bin) )
     a_i[ii] = interpolate_ascending(coalesce.(cth_bin[jj],NaN), 
                                     coalesce.(cth_nrm[jj],NaN) ).(ztop[ii]) # interpolate cloud fraction for each cloud category i
-    Feddy_i = allskyeddyflux ./ permutedims(a_i)
-    println("sum(isfinite, skipmissing(Feddy_i)) = $(sum(isfinite, skipmissing(Feddy_i)))")
-    Ncld, Np = compute_normalized_fluxes(tot_sink; x=x, z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, qtc=qtc, icb=icb, qcb=qcb)
+    return a_i
+end
 
-    Fcld = Ncld .* Feddy_i
-    Fp = Np .* Feddy_i
+function cloudflux_allsky(tot_sink=tot_sink; x=x, 
+    z, nz=length(z), dz=z[2]-z[1],
+    qm=qm, qs=qs, divg, E_cb, cth_acc, rhoL,
+    zi=4000.0, zcb=z[icb], icb=icb, qcb=qcb,
+    cth_bin, cth_nrm)
+    
+    # compute clouds
+    _, qtc = cloud_qt(tot_sink; x=x, z=z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, icb=icb, qcb=qcb)
+
+    # find cloud top heights ztop for each sink rate
+    ztop = interp_cloudtop_height(z, qtc.-qs) # interpolate cloud top height from qd=qt-qs
+    # find cloud fraction a_i for each cloud top height category i
+    a_i = interp_a_i(ztop, cth_bin, cth_nrm)
+
+    # compute all sky flux at cloud top heights
+    G_i, G_tot = calc_G_allsky(ztop; z=z, E_cb=E_cb, divg=divg,
+        qm=qm, cth_bin=cth_bin, cth_acc=cth_acc,
+        rhoL=rhoL, zi=zi, dz=dz, zcb=zcb)
+    # compute in-cloud flux for each cloud category i
+    ii = .!ismissing.(a_i) .&& a_i .> 0.0
+    F_i = Vector{Union{Missing, Float64}}(missing, length(ztop))
+    F_i[ii] = G_i[ii] ./ a_i[ii] # Vectors if flux i is uniform
+
+    # ugly AI-generated code commented out
+    #=
+    # total all-cloud all-sky flux G = sum(G_i) = sum(a_i * F_i)
+    # 1) partition all-sky flux profile into category all-sky flux G_i by solved cloud-top height h_i
+    # 2) compute in-cloud category flux F_i = G_i / a_i
+    Fi = Vector{Union{Missing, Float64}}(missing, length(ztop))
+    kk = @. ( !ismissing(allskyeddyflux) && isfinite(allskyeddyflux) )
+    interpG = interpolate_ascending(coalesce.(z[kk], NaN), coalesce.(allskyeddyflux[kk], NaN))
+
+    valid = findall(i -> !ismissing(ztop[i]) && isfinite(coalesce(ztop[i], NaN)) &&
+                         isfinite(coalesce(a_i[i], NaN)) && coalesce(a_i[i], NaN) > 0.0,
+                    eachindex(ztop))
+    if !isempty(valid)
+        hbin = round.(coalesce.(ztop[valid], NaN) ./ dz) .* dz
+        hs = sort(unique(hbin))
+        nb = length(hs)
+        Abin = zeros(nb)
+        Gbin = zeros(nb)
+
+        for k in eachindex(hs)
+            members = findall(hbin .== hs[k])
+            Abin[k] = sum(coalesce.(a_i[valid[members]], 0.0))
+        end
+
+        Gh = interpG.(hs)
+        if nb > 1
+            Gbin[1:nb-1] .= Gh[1:nb-1] .- Gh[2:nb]
+        end
+        Gbin[nb] = Gh[nb]
+
+        Fbin = Gbin ./ Abin
+        for k in eachindex(hs)
+            members = findall(hbin .== hs[k])
+            Fi[valid[members]] .= Fbin[k]
+        end
+    end
+    =#
+
+    println("sum(isfinite, skipmissing(F_i)) = $(sum(isfinite, skipmissing(F_i),init=0))")
+    # compute normalized cloud and precip fluxes for each sink rate, (z,i)
+    Ncld, Np = compute_normalized_fluxes(tot_sink; x=x, z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, qtc=qtc, icb=icb, qcb=qcb)
+    # scale the normalized fluxes by the in-cloud flux F_i for each cloud category i
+    Fcld = Ncld .* F_i'
+    Fp = Np .* F_i'
 
     return ztop, Fcld, Fp, qtc, a_i
 end
