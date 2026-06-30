@@ -46,6 +46,7 @@ export setup_experiments
 export cloud_i_area
 export test_control_sink
 export calc_ql
+export new_area
 
 
 "Load sounding and GOES data once and return initialized context."
@@ -92,7 +93,8 @@ function setup_experiments(; ctx::ModelContext)
     x = 0.53 # parameter precipitation efficiency
 
     # ensemble of sink rates
-    tot_sink = range(6.3523e-4, 5.7e-3, length=600) # min tuned for x=0.53 to get the highest possible cloud top
+    # reverse so that tot_sink decreases and ztop increases
+    tot_sink = reverse(range(6.3523e-4, 5.7e-3, length=600)) # min tuned for x=0.53 to get the highest possible cloud top
     dsink = ctx.dsink
     # tot_sink = (1 .+tanh.(range(-8*pi, 0, length=600))) .* (5e-3 - 1e-4) .+ 1e-4
     # tot_sink = range(6.1716e-4, 5.8e-3, length=600) # min tuned for x=0.53 to get the highest possible cloud top
@@ -250,6 +252,56 @@ end
 
 "binear interpolation of y(x) between (x1,y1) and (x2,y2)"
 bilinear(x1,x2, y1,y2, x) = ( x2 == x1 ? y1 : y1 + (y2-y1) * (x-x1) / (x2-x1) )
+
+# functions for computing new cloud area a_i for a new experiment 
+# assuming the w_i are constant.
+"normz(ztop) normalized z coordinate between zcb and ztop"
+normz(z, ztop, zcb) = (z - zcb) / (ztop - zcb)
+
+function stretch_to_new_ztop( oldQ::Vector, oldztop::Number, newztop::Number, ctx::ModelContext )
+    z = ctx.z
+    zcb = ctx.zcb
+    newQ = fill(NaN, size(z))
+    good(x) = !ismissing(x) && isfinite(x)
+    if !ismissing(oldztop) && isfinite(oldztop) && !ismissing(newztop) && isfinite(newztop)
+        Q = coalesce.(oldQ, NaN)
+        ii = good.(oldQ)
+        jj = zcb .<= z .<= oldztop # only interpolate at z between cloud base and old cloud top height
+        newQ[jj] = interpolate_ascending( normz.(z, oldztop, zcb)[ii], Q[ii] ).(normz.(z[jj], newztop, zcb))
+    end
+    return newQ
+end
+
+"""
+new_area(M::Vector, ztop::Union{Missing,Float64}, w_old, ztop_old, ctx)
+    new experiment cloud area, assuming stretching invariant w_old
+"""
+function new_area(M::Vector, ztop::Union{Missing,Float64}, w_old, ztop_old, ctx)
+    # new cloud area fraction for new ztop, given mass flux and old velocity
+    M ./ stretch_to_new_ztop( w_old, ztop_old, ztop, ctx )
+end
+"""
+new_area(expt::Experiment, ctl::Experiment)
+    compute the cloud area for a new experiment expt mass flux and cloud top height
+    given the old experiment ctl w and ztop.
+"""
+function new_area(expt::Experiment, ctl::Experiment, ctx::ModelContext)
+    z = ctx.z
+    zcb = ctx.zcb
+    ztop    = expt.output.ztop
+    ztop_old = ctl.output.ztop
+    a_i_new = fill(NaN, size(expt.output.M))
+    for i in eachindex(ztop)
+        if !ismissing(ztop[i]) && isfinite(ztop[i]) && !ismissing(ztop_old[i]) && isfinite(ztop_old[i])
+            @assert ztop[i] > zcb
+            print("ztop[$i] = $(ztop[i]), ztop_old[$i] = $(ztop_old[i])\n")
+            tmp = new_area( expt.output.M[:,i], ztop[i], ctl.output.w[:,i], ztop_old[i], ctx )
+            print("size(tmp) = $(size(tmp))\n")
+            a_i_new[:,i] = coalesce.(tmp, NaN)
+        end
+    end
+    return a_i_new
+end
 
 "integrate an experiment based on inputs, modify output in place"
 function integrate_experiment!(exp::Experiment; ctx::ModelContext)

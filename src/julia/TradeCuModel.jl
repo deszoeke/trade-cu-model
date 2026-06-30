@@ -3,10 +3,9 @@ module TradeCuModel
 # load modules
 using Revise # does using Revise first allow for revising code in ATOMIC_GOES???
 using Pkg
-# Pkg.activate(joinpath(homedir(), "Projects/ATOMIC/ATOMIC_GOES/julia/ATOMIC_GOES"))
-joinpath(homedir(), "projects/ATOMIC/trade-cu-model/src/julia") |> p-> ispath(p) && cd(p)
-joinpath(homedir(), "Projects/ATOMIC/trade-cu-model/src/julia") |> p-> ispath(p) && cd(p)
-Pkg.activate(".")
+# joinpath(homedir(), "projects/ATOMIC/trade-cu-model/src/julia") |> p-> ispath(p) && cd(p)
+# joinpath(homedir(), "Projects/ATOMIC/trade-cu-model/src/julia") |> p-> ispath(p) && cd(p)
+# Pkg.activate(".")
 
 using Printf
 using Dates
@@ -619,7 +618,7 @@ bilinear(x1,x2, y1,y2, x) = ( x2 == x1 ? y1 : y1 + (y2-y1) * (x-x1) / (x2-x1) )
 function interpolate_descending( X::AbstractVector{<:Real}, Y::AbstractVector{<:Real} )
     function itp(x)
         # strictly NaN true out-of-bounds inputs
-        x > X[1] || x < X[end] && return NaN
+        (x > X[1] || x < X[end]) && return NaN
         # search for descending vector order
         j = clamp(searchsortedfirst(X, x, rev=true), 2, length(X)) # clamped to data intervals [2, N]
         bilinear(X[j-1],X[j], Y[j-1],Y[j], x)
@@ -631,10 +630,10 @@ end
 function interpolate_ascending( X::AbstractVector{<:Real}, Y::AbstractVector{<:Real} )
     function itp(x)
         # strictly NaN true out-of-bounds inputs
-        x > X[1] || x < X[end] && return NaN
+        (x < X[1] || x > X[end]) && return NaN
         # search for ascending vector order
-        j = clamp(searchsortedfirst(X, x), 1, length(X)-1) # clamped to data intervals [1, N-1]
-        bilinear(X[j],X[j+1], Y[j],Y[j+1], x)
+        j = clamp(searchsortedfirst(X, x), 2, length(X)) # clamped to data intervals [2, N]
+        bilinear(X[j-1],X[j], Y[j-1],Y[j], x)
     end
     return itp
 end
@@ -647,11 +646,11 @@ function interp_sinkrate( e::Experiment; ctx::ModelContext )
     z = ctx.z
     tot_sink = e.input.tot_sink
     qd = e.output.qc .- e.input.qs
-    ztop = interp_cloudtop_height(z, qd) # ztop is in descending order
+    ztop = interp_cloudtop_height(z, qd) # ztop is ascending (tot_sink is descending)
     ii = .!ismissing.(ztop) # filter missing, let NaN thru
     # println("size(ii) = $(size(ii))")
-    # evaluate the interpolator; extrapolates on the low end!
-    sinkz = interpolate_descending(coalesce.(ztop[ii], NaN), coalesce.(tot_sink[ii], NaN)).(z)
+    # evaluate the interpolator; sinkz decreases with z
+    sinkz = interpolate_ascending(coalesce.(ztop[ii], NaN), coalesce.(tot_sink[ii], NaN)).(z)
     sinkz[sinkz .< 0.7*minimum(tot_sink)] .= NaN # retain a little extrapolation
     return sinkz
 end

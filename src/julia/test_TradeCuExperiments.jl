@@ -32,7 +32,7 @@ PythonPlot.matplotlib.rcParams["font.sans-serif"] = ["Helvetica", "Arial", "Open
 includet("TradeCuExperiments.jl")
 using .TradeCuExperiments
 
-interp_cloudtop_height = TradeCuModel.interp_cloudtop_height # testing this
+# interp_cloudtop_height = TradeCuModel.interp_cloudtop_height # testing this
 
 # experiment with sink rate fixed by the control
 ctx, ExpDict, controlsink, sinkm5, sinkp5 = test_control_sink();
@@ -43,7 +43,7 @@ ctx, ExpDict, controlsink, sinkm5, sinkp5 = test_control_sink();
     rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx)
 # Get matched total sink rate and cloud top ensemble from control experiment
 # aligned with the z grid for use in experiments.
-# controlsink.output.acld # cloud fractions interpolated to ztop = z grid
+# controlsink.output.acld; cloud fractions interpolated to ztop = z grid
 function good_sinks(controlsink; zb=700.0, zt=4000.0)
     ii = findall(x-> zb<=x<=zt, ctx.z)
     (ctx.z[ii], controlsink.input.tot_sink[ii], 
@@ -62,7 +62,7 @@ DIMsink = define_experiment(;
     E_cb=1.02*E_cb,
     x=x,
     divg=0.95*divg,
-    tot_sink=reverse(sinkz), # sinkz increases
+    tot_sink=sinkz, # sinkz decreases with index
     cth_bin= ztop,
     rfv_acc= acc,
     rfv_nrm= acld );
@@ -70,7 +70,7 @@ DIMsinkm5 = define_experiment(;
     name="DIMsink-5%", description="DIM sink rate -5%",
     qm= (1 .- 0.95*(1 .- qm./qs)).*qs*1.07, qs=1.07*qs, zcb=zcb,
     qcb=1.07*qcb, E_cb=1.02*E_cb, x=x, divg=0.95*divg,
-    tot_sink=reverse(sinkz*0.95),
+    tot_sink=sinkz*0.95, # sinkz decreases with index
     cth_bin= ztop,
     rfv_acc= acc, 
     rfv_nrm= acld ); # how to specify the cloud fraction?
@@ -78,7 +78,7 @@ DIMsinkp5 = define_experiment(;
     name="DIMsink+5%", description="DIM sink rate +5%",
     qm= (1 .- 0.95*(1 .- qm./qs)).*qs*1.07, qs=1.07*qs, zcb=zcb,
     qcb=1.07*qcb, E_cb=1.02*E_cb, x=x, divg=0.95*divg,
-    tot_sink=reverse(sinkz*1.05),
+    tot_sink=sinkz*1.05, # sinkz decreases with index
     cth_bin= ztop,
     rfv_acc= acc, 
     rfv_nrm= acld );
@@ -88,6 +88,11 @@ for exp in [DIMsink, DIMsinkm5, DIMsinkp5]
     integrate_experiment!(exp, ctx=ctx)
     push!(ExpDict, exp.name => exp)
 end
+
+# recompute the cloud fraction for the DIM experiments, assuming
+# w_i is invariant from the control experiment, stretching w profile from old ztop to new ztop.
+a_i = new_area( ExpDict["DIMsink"], ExpDict["control-sink"], ctx )
+# possibly only cloud BASE mass flux is a good indicator of cloud fraction.
 
 "plot cloud vertical velocity for an experiment"
 function plot_exp(e, var, ctx=ctx)
