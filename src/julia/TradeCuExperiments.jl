@@ -125,6 +125,13 @@ allocate_output(nz,ns) = ModelOutput(
     Matrix{Union{Missing, Float64}}(missing, nz,ns), Matrix{Union{Missing, Float64}}(missing, nz,ns),
     Matrix{Union{Missing, Float64}}(missing, nz,ns) )
 
+function define_experiment(; name, description, 
+    qm, qs, zcb, qcb, E_cb, x, divg, tot_sink, cth_bin, rfv_acc, rfv_nrm, control=true, a_i=nothing)
+    Experiment( name, description,
+        ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, tot_sink, cth_bin, rfv_acc, rfv_nrm, control, a_i),
+        allocate_output(length(qm),length(tot_sink)) )
+end
+
 "initialize experiments with input parameters and empty output structures"
 function define_experiments(; ctx::ModelContext)
     ( qm, qs, zcb, qcb, E_cb, x, divg, 
@@ -132,35 +139,43 @@ function define_experiments(; ctx::ModelContext)
         rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx)
         
     # initialize experiment input and output structures
-    control = Experiment(
-        "control", "Control",
-        ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-        allocate_output(nz,ns) )
-    subsminus5pct = Experiment(
-        "subsidence-5%", "LS subsidence-5%",
-        ModelInput(qm, qs, zcb, qcb, E_cb, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-        allocate_output(nz,ns) )
-    qsplus7pct = Experiment(
-        "qs+7%", "qs+7%, LS subsidence-5%, LOW RH!",
-        ModelInput(qm, qs*1.07, zcb, qcb*1.07, E_cb, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-        allocate_output(nz,ns) )
-    qplus7pct = Experiment(
-        "q&qs+7%", "q and qs +7%, subsidence-5%, RH=control",
-        ModelInput(qm*1.07, qs*1.07, zcb, qcb*1.07, E_cb, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-        allocate_output(nz,ns) )
-    ecbplus2pct = Experiment(
-        "Ecb+2%", "E_cb + 2%, q&qs+7%, subsidence-5%",
-        ModelInput(qm*1.07, qs*1.07, zcb, qcb*1.07, E_cb*1.02, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-        allocate_output(nz,ns) )
+    control = define_experiment(; name="control", description="Control",
+        qm=qm, qs=qs, zcb=zcb, qcb=qcb, E_cb=E_cb, x=x, divg=divg, tot_sink=tot_sink, 
+        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=true, a_i=nothing )
+    integrate_experiment!(control, ctx=ctx) # integrate control to get a_i for other experiments
+    a_i = control.output.acld # cloud area fraction for each cloud top height bin
+
+    # need to integrate control reference to get a_i for other experiments
+    subsminus5pct = define_experiment(
+        name="subsidence-5%", description="LS subsidence-5%",
+        qm=qm, qs=qs, zcb=zcb, qcb=qcb, E_cb=E_cb, x=x, divg=divg*0.95, tot_sink=tot_sink, 
+        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=false, a_i=a_i )
+    
+    qsplus7pct = define_experiment(
+        name="qs+7%", description="qs+7%, LS subsidence-5%, LOW RH!",
+        qm=qm, qs=qs*1.07, zcb=zcb, qcb=qcb*1.07, E_cb=E_cb, x=x, divg=divg*0.95, tot_sink=tot_sink, 
+        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=false, a_i=a_i )
+
+    qplus7pct = define_experiment(
+        name="q&qs+7%", description="q and qs +7%, subsidence-5%, RH=control",
+        qm=qm*1.07, qs=qs*1.07, zcb=zcb, qcb=qcb*1.07, E_cb=E_cb, x=x, divg=divg*0.95, tot_sink=tot_sink, 
+        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=false, a_i=a_i )
+
+    ecbplus2pct = define_experiment(
+        name="Ecb+2%", description="E_cb + 2%, q&qs+7%, subsidence-5%",
+        qm=qm*1.07, qs=qs*1.07, zcb=zcb, qcb=qcb*1.07, E_cb=E_cb*1.02, x=x, divg=divg*0.95, tot_sink=tot_sink, 
+        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=false, a_i=a_i )
+
     qm_new = @. (1 - 0.95*(1-qm/qs)) * qs * 1.07
-    cRHminus5pct = Experiment(
-        "(1-RH)-5%", "subcloud (1-RH)-5%, E_cb+2%, q&qs+7%, subsidence-5%",
-        ModelInput(qm_new, qs*1.07, zcb, qcb*1.07, E_cb*1.02, x, divg*0.95, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-        allocate_output(nz,ns) )
-    DIM = Experiment(
-        "DIM", "Descent Inhibited Moisture Flux; a_i-5%, (1-RH)-5%, E_cb+2%, q&qs+7%, subsidence-5%",
-        ModelInput(qm_new, qs*1.07, zcb, qcb*1.07, E_cb*1.02, x, divg*0.95, tot_sink, cth_bin, 0.95*rfv_acc, 0.95*rfv_nrm),
-        allocate_output(nz,ns) )
+    cRHminus5pct = define_experiment(
+        name="(1-RH)-5%", description="subcloud (1-RH)-5%, E_cb+2%, q&qs+7%, subsidence-5%",
+        qm=qm_new, qs=qs*1.07, zcb=zcb, qcb=qcb*1.07, E_cb=E_cb*1.02, x=x, divg=divg*0.95, tot_sink=tot_sink, 
+        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=false, a_i=a_i )
+
+    DIM = define_experiment(
+        name="DIM", description="Descent Inhibited Moisture Flux; a_i-5%, (1-RH)-5%, E_cb+2%, q&qs+7%, subsidence-5%",
+        qm=qm_new, qs=qs*1.07, zcb=zcb, qcb=qcb*1.07, E_cb=E_cb*1.02, x=x, divg=divg*0.95, tot_sink=tot_sink, 
+        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=false, a_i=a_i )
 
     # experiment dictionary for looping, and defining short names
     ExpDict = Dict(
@@ -174,22 +189,17 @@ function define_experiments(; ctx::ModelContext)
     )
 end
 
-function define_experiment(; name, description, 
-    qm, qs, zcb, qcb, E_cb, x, divg, tot_sink, cth_bin, rfv_acc, rfv_nrm)
-    Experiment( 
-        name, description,
-        ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, tot_sink, cth_bin, rfv_acc, rfv_nrm),
-        allocate_output(length(qm),length(tot_sink)) )
-end
-
+# should just use define_experiment to define a sink experiment
 function define_control_sink_experiment(; ctx::ModelContext, sinkz=sinkz, 
-    name="control-sink", description="control sink rate experiment")
+    name="control-sink", description="control sink rate experiment",
+    control=true, a_i=nothing)
     ( qm, qs, zcb, qcb, E_cb, x, divg, 
         tot_sink, cth_bin, rfv_acc, rfv_nrm, 
         rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx)
 
     return Experiment( name, description,
-            ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, sinkz, cth_bin, rfv_acc, rfv_nrm),
+            ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, sinkz, cth_bin, rfv_acc, rfv_nrm, 
+            control, a_i),
             allocate_output(nz,nz) ) # note nz,nz
 end
 
@@ -264,7 +274,9 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
         cth_acc=exp.input.cth_acc, rhoL=ctx.rhoL,
         zi=ctx.zi, zcb=exp.input.zcb,
         icb=findfirst(z.>=exp.input.zcb), qcb=exp.input.qcb,
-        cth_bin=exp.input.cth_bin, cth_nrm=exp.input.cth_nrm)
+        cth_bin=exp.input.cth_bin, cth_nrm=exp.input.cth_nrm,
+        control=exp.input.control, a_i=exp.input.a_i) 
+        # if control, use a_i from satellite data; else supply a_i from a previous experiment
     da_ind = eachindex(exp.input.tot_sink)
 
     # get sink rate as a function of cloud top height
@@ -397,13 +409,18 @@ function test_control_sink()
     # get sink rate as a function of cloud top height from control
     sinkz = interp_sinkrate( ExpDict["control"]; ctx=ctx ) # extrapolates!
 
-    a_i = cloud_i_area( ctx )
+    # a_i = cloud_i_area( ctx )
     controlsink = define_control_sink_experiment(ctx=ctx, sinkz=     sinkz,
-        name="control-sink", description="control sink rate experiment")
+        name="control-sink", description="control sink rate experiment",
+        control=true, a_i=nothing)
+    a_i = controlsink.output.acld # sized for new sink rate bins
+
     sinkm5      = define_control_sink_experiment(ctx=ctx, sinkz=0.95*sinkz,
-        name="control-sink-5%", description="control sink rate experiment -5%")
+        name="control-sink-5%", description="control sink rate experiment -5%",
+        control=false, a_i=a_i)
     sinkp5      = define_control_sink_experiment(ctx=ctx, sinkz=1.05*sinkz,
-        name="control-sink+5%", description="control sink rate experiment +5%")
+        name="control-sink+5%", description="control sink rate experiment +5%",
+        control=false, a_i=a_i)
     integrate_experiment!(controlsink, ctx=ctx)
     integrate_experiment!(sinkm5,      ctx=ctx)
     integrate_experiment!(sinkp5,      ctx=ctx)

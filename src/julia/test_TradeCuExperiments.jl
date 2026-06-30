@@ -35,7 +35,6 @@ using .TradeCuExperiments
 interp_cloudtop_height = TradeCuModel.interp_cloudtop_height # testing this
 
 # experiment with sink rate fixed by the control
-# ctx, ExpDict, controlsink, sinkm5, sinkp5 = TradeCuExperiments.test_control_sink() # not needed in REPL
 ctx, ExpDict, controlsink, sinkm5, sinkp5 = test_control_sink();
 
 # load standard parameters

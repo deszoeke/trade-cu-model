@@ -308,6 +308,8 @@ struct ModelInput
     cth_bin::Vector
     cth_acc::Vector # accumulated cloud fraction below cth_bin
     cth_nrm::Vector # cloud fraction within cth_bin
+    control::Bool
+    a_i::Union{Vector, Nothing}
 end
 
 # Define the Outputs Container
@@ -505,13 +507,6 @@ function calc_G_allsky(ztop; z,
         wdqdz = subsidence(z_) .* ddz(z_)
         -wdqdz - 1.7e-8 * max(0, (zdivg - z_) ./ zdivg) # tapers to surface
     end
-    # function largescale_drying(q, z_)
-    #     zdivg = 4e3 # m; hardwired
-    #     wdqdz = subsidence.(z_[1:end-1]) .* ddz(q, z_)
-    #     -wdqdz .- 1.7e-8 .* max.(0, (zdivg .- z_[1:end-1]) ./ zdivg) # tapers to surface
-    # end
-
-    # S_ls = largescale_drying(qm, z)
 
     # Total all-sky flux G with cloud-base boundary condition
     nztop = length(ztop)
@@ -785,64 +780,34 @@ function cloudflux_allsky(tot_sink=tot_sink; x=x,
     z, nz=length(z), dz=z[2]-z[1],
     qm=qm, qs=qs, divg, E_cb, cth_acc, rhoL,
     zi=4000.0, zcb=z[icb], icb=icb, qcb=qcb,
-    cth_bin, cth_nrm)
-    
+    cth_bin, cth_nrm, 
+    control=true, a_i=nothing)
+    # a_i(ztop)
+
     # compute clouds
     _, qtc = cloud_qt(tot_sink; x=x, z=z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, icb=icb, qcb=qcb)
 
     # find cloud top heights ztop for each sink rate
     ztop = interp_cloudtop_height(z, qtc.-qs) # interpolate cloud top height from qd=qt-qs
-    # find cloud fraction a_i for each cloud top height category i
-    a_i = interp_a_i(ztop, cth_bin, cth_nrm)
 
-    # compute all sky flux at cloud top heights
+    if control
+        # interpolate cloud fraction a_i for each cloud top height category i from the
+        # reference distribution from satellite data.
+        a_i = interp_a_i(ztop, cth_bin, cth_nrm)
+    end
+    # otherwise use a_i[size(qtc,2)] matching ztop
+
+    # compute all sky flux at cloud top heights for control simulation
     G_i, G_tot = calc_G_allsky(ztop; z=z, E_cb=E_cb, divg=divg,
         qm=qm, cth_bin=cth_bin, cth_acc=cth_acc,
         rhoL=rhoL, zi=zi, dz=dz, zcb=zcb)
+
     # compute in-cloud flux for each cloud category i
     ii = .!ismissing.(a_i) .&& a_i .> 0.0
     F_i = Vector{Union{Missing, Float64}}(missing, length(ztop))
     F_i[ii] = G_i[ii] ./ a_i[ii] # Vectors if flux i is uniform
-
-    # ugly AI-generated code commented out
-    #=
-    # total all-cloud all-sky flux G = sum(G_i) = sum(a_i * F_i)
-    # 1) partition all-sky flux profile into category all-sky flux G_i by solved cloud-top height h_i
-    # 2) compute in-cloud category flux F_i = G_i / a_i
-    Fi = Vector{Union{Missing, Float64}}(missing, length(ztop))
-    kk = @. ( !ismissing(allskyeddyflux) && isfinite(allskyeddyflux) )
-    interpG = interpolate_ascending(coalesce.(z[kk], NaN), coalesce.(allskyeddyflux[kk], NaN))
-
-    valid = findall(i -> !ismissing(ztop[i]) && isfinite(coalesce(ztop[i], NaN)) &&
-                         isfinite(coalesce(a_i[i], NaN)) && coalesce(a_i[i], NaN) > 0.0,
-                    eachindex(ztop))
-    if !isempty(valid)
-        hbin = round.(coalesce.(ztop[valid], NaN) ./ dz) .* dz
-        hs = sort(unique(hbin))
-        nb = length(hs)
-        Abin = zeros(nb)
-        Gbin = zeros(nb)
-
-        for k in eachindex(hs)
-            members = findall(hbin .== hs[k])
-            Abin[k] = sum(coalesce.(a_i[valid[members]], 0.0))
-        end
-
-        Gh = interpG.(hs)
-        if nb > 1
-            Gbin[1:nb-1] .= Gh[1:nb-1] .- Gh[2:nb]
-        end
-        Gbin[nb] = Gh[nb]
-
-        Fbin = Gbin ./ Abin
-        for k in eachindex(hs)
-            members = findall(hbin .== hs[k])
-            Fi[valid[members]] .= Fbin[k]
-        end
-    end
-    =#
-
     println("sum(isfinite, skipmissing(F_i)) = $(sum(isfinite, skipmissing(F_i),init=0))")
+
     # compute normalized cloud and precip fluxes for each sink rate, (z,i)
     Ncld, Np = compute_normalized_fluxes(tot_sink; x=x, z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, qtc=qtc, icb=icb, qcb=qcb)
     # scale the normalized fluxes by the in-cloud flux F_i for each cloud category i
