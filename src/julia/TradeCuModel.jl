@@ -471,11 +471,8 @@ function calc_G_allsky(ztop; z,
     rhb_prate=8.88e-6, # kg/s
     divg,
     qm,
-    cth_bin,
-    cth_acc,
     rhoL,
     zi=4000.0,
-    dz=z[2]-z[1],
     zcb=700.0 )
 
     # align cth data; cth_bin starts at z=500 m
@@ -817,8 +814,7 @@ function cloudflux_allsky(tot_sink=tot_sink; x=x,
 
     # compute all sky flux at cloud top heights for control simulation
     G_i, G_tot = calc_G_allsky(ztop; z=z, E_cb=E_cb, divg=divg,
-        qm=qm, cth_bin=cth_bin, cth_acc=cth_acc,
-        rhoL=rhoL, zi=zi, dz=dz, zcb=zcb)
+        qm=qm, rhoL=rhoL, zi=zi, zcb=zcb)
 
     # compute in-cloud flux for each cloud category i
     ii = .!ismissing.(a_i) .&& a_i .> 0.0
@@ -829,10 +825,11 @@ function cloudflux_allsky(tot_sink=tot_sink; x=x,
     # compute normalized cloud and precip fluxes for each sink rate, (z,i)
     Ncld, Np = compute_normalized_fluxes(tot_sink; x=x, z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, qtc=qtc, icb=icb, qcb=qcb)
     # scale the normalized fluxes by the in-cloud flux F_i for each cloud category i
+    Gcld = Ncld .* G_i'
     Fcld = Ncld .* F_i'
     Fp = Np .* F_i'
-
-    return ztop, Fcld, Fp, qtc, a_i
+    
+    return ztop, Fcld, Fp, qtc, a_i, Gcld
 end
 
 "compute w for a single x and range of sink rates"

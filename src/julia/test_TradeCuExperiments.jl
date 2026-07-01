@@ -107,12 +107,15 @@ multop(f, v, T...) = f.(broadcast(x->unpack(v,x), T)...)
 f(x,y) = log(x/y)
 dlnM = multop(f, [:output, :M], ExpDict["DIMsink"], ExpDict["control-sink"]) 
 
-function plot_exp_var(e, var::Symbol, ctx=ctx; kwargs...)
+# plotting functions for experiment output
+Experiment = TradeCuModel.Experiment # for dispatch
+
+"pcolormesh q::Matrix for experiment e"
+function plot_exp_var(e::Experiment, q::Matrix, ctx=ctx; ncolor=10, kwargs...)
     ztop = e.output.ztop
     iz = findall(500.0 .<= ctx.z .<= 3500.0) # 10 m bins, z=500 m
     ik = findall(x-> !ismissing(x) && isfinite(x), ztop)
-    pcolormesh(ztop[ik]/1e3, ctx.z[iz]/1e3, getfield(e.output, var)[iz,ik], 
-        cmap=ColorMap("BuPu"), kwargs...)
+    pcolormesh(ztop[ik]/1e3, ctx.z[iz]/1e3, q[iz,ik]; cmap=get_cmap("BuPu", ncolor), kwargs...)
     colorbar()
     plot(ztop[ik]/1e3, e.output.acld[ik], "w-", linewidth=0.5, label="cloud_i fraction")
     ylim([0.5, 3.5]); xlim([0.5, 3.5])
@@ -120,43 +123,25 @@ function plot_exp_var(e, var::Symbol, ctx=ctx; kwargs...)
     ylabel("z coordinate (km)")
     gca().set_aspect("equal")
 end
+"pcolormesh an experiment output variable var"
+plot_exp_var(e::Experiment, var::Symbol, ctx=ctx; kwargs...) = plot_exp_var(e::Experiment, getfield(e.output, var), ctx; kwargs...)
+plot_exp_var(f, e::Experiment, var::Symbol, ctx=ctx; kwargs...) = plot_exp_var(e::Experiment, f.(getfield(e.output, var)), ctx; kwargs...)
 
 "plot cloud vertical velocity for an experiment"
 function plot_exp_w(e, ctx=ctx; kwargs...)
-    ztop = interp_cloudtop_height(ctx.z, e.output.qc .- e.input.qs)
-    iz = findall(500.0 .<= ctx.z .<= 3500.0) # 10 m bins, z=500 m
-    ik = findall(x-> !ismissing(x) && isfinite(x), ztop) # tot_sink -> ztop
-    log_norm = PythonPlot.matplotlib.colors.LogNorm(vmin=minimum(0.001), vmax=maximum(5))
-    pcolormesh(ztop[ik]/1e3, ctx.z[iz]/1e3, e.output.w[iz,ik], 
-        cmap=ColorMap("BuPu")) #, norm=log_norm, kwargs...)
-    colorbar()
-    ylim([0.5, 3.5]); xlim([0.5, 3.5])
-    xlabel("control cloud top height (km)")
-    ylabel("z coordinate (km)")
+    plot_exp_var(e, :w, ctx; kwargs...)
     title("cloud vertical velocity (m/s)")
-    gca().set_aspect("equal")
-    tight_layout()
 end
-
 "plot cloud liquid for an experiment"
-function plot_exp_qc(e, ctx=ctx; kwargs...)
-    ztop = interp_cloudtop_height(ctx.z, e.output.qc .- e.input.qs) # recomputing here works
-    ql = calc_ql(e)
-    iz = findall(500.0 .<= ctx.z .<= 3500.0) # 10 m bins, z=500 m
-    ik = findall(x-> !ismissing(x) && isfinite(x), ztop) # tot_sink -> ztop
-
-    pcolormesh(ztop[ik]/1e3, ctx.z[iz]/1e3, ql[iz,ik]*1e3, 
-        cmap=get_cmap("BuPu",10), vmin=0.0, vmax=2.0, kwargs...)
-    colorbar()
-    ylim([0.5, 3.5]); xlim([0.5, 3.5])
-    xlabel("control cloud top height (km)")
-    ylabel("z coordinate (km)")
+function plot_exp_ql(e, ctx=ctx; kwargs...)
+    plot_exp_var(e, 1e3*calc_ql(e), ctx; kwargs...)
     title("cloud liquid (g/kg)")
-    gca().set_aspect("equal")
-    # tight_layout()
 end
-
-
+"plot total cloud water"
+function plot_exp_qc(e, ctx=ctx; kwargs...)
+    plot_exp_var(x->x.*1e3, e, :qc, ctx; kwargs...)
+    title("cloud liquid (g/kg)")
+end
 
 # plot cloud w
 clf(); fig = figure()
@@ -210,7 +195,7 @@ expmts = ["control-sink", "DIMsink", "DIMsink-5%"]
 clf(); fig = figure(); fig.set_size_inches([10, 5])
 for (i, exp) in enumerate(expmts)
     subplot(2,3,i)
-    plot_exp_w(ExpDict[exp], ctx)
+    plot_exp_w(ExpDict[exp], ctx; vmax=1.0)
     plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
     title(exp)
     gca().set_aspect("equal")
@@ -218,7 +203,7 @@ end
 suptitle("cloud vertical velocity (m/s)")
 for (i, exp) in enumerate(expmts)
     subplot(2,3,3+i)
-    plot_exp_qc(ExpDict[exp], ctx)
+    plot_exp_ql(ExpDict[exp], ctx; vmin=0.0, vmax=2.0)
     plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
     title(exp)
     gca().set_aspect("equal")

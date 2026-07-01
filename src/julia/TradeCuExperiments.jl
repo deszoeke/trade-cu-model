@@ -317,7 +317,7 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     #     F2z=F2z, icb=findfirst(z .>= exp.input.zcb), 
     #     qcb=exp.input.qcb )
 
-    ztop, F_cld, F_pcp, qcld, acld = cloudflux_allsky(exp.input.tot_sink; 
+    ztop, F_cld, F_pcp, qcld, acld, G_i = cloudflux_allsky(exp.input.tot_sink; 
         x=exp.input.x, z=z, nz=length(z), dz=z[2]-z[1],
         qm=exp.input.qm, qs=exp.input.qs,
         divg=exp.input.divg, E_cb=exp.input.E_cb,
@@ -328,42 +328,11 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
         control=exp.input.control, a_i=exp.input.a_i) 
         # if control, use a_i from satellite data; else supply a_i from a previous experiment
     da_ind = eachindex(exp.input.tot_sink)
-
-    # get sink rate as a function of cloud top height
-    # postprocess to get w, a, M, ...
-    # w, _ = updraft_w_dq(F_cld, qcld, exp.input.qm, z, ztop)
-    # print("size(w): $(size(w))") # nz, ns = (3100, 600)
-
-    # Interpolate satellite coordinate to model sinkrate coordiante.
-    # cloud fraction density per unit sink rate
-    # da/dsinkrate = da/dh * dh/dsinkrate.
-
-    # interpolate cloud area fraction to sink rate bins
-    # if false && length(exp.input.tot_sink) != length(ctx.z)
-    #     # sloppily interpolate from the cloud top height bins to the sink rate bins
-    #     # da_dsink, da_ind = dadsinkrate(zt, exp.input.tot_sink, exp.input.cth_bin, exp.input.cth_nrm)
-    #     # acld = ctx.dsink * da_dsink # cloud area fraction in sink rate bin; BROKEN
-    #     # now improve by using interp_cloudtop_height to get a more accurate mapping of cloud top height to sink rate.
-    #     ztop = interp_cloudtop_height(ctx.z, exp.output.qc .- exp.input.qs) # ztop in descending order, a fcn of sink rate
-    #     jj = @. ( !ismissing(exp.input.cth_acc) && !ismissing(exp.input.cth_bin) )
-    #     ii = @. ( !ismissing(ztop) )
-    #     acld = fill(NaN, length(ztop))
-    #     acld[ii] = interpolate_ascending(exp.input.cth_bin[jj], exp.input.cth_nrm[jj]).(ztop[ii])
-    #     # acld is cloud fraction assigned to each sink rate bin -- not quite conservative
-    # elseif false
-    #     # direct assignment if sink rate bins are the same as z grid
-    #     acld = cloud_i_area(ctx) # cloud area fraction in sink rate & cloud top height bin i
-    # end
-
-    # println("size(qcld)=$(size(qcld))") # (600,) or (3100,)
-    # println("size(acld)=$(size(acld))") # (600,) or (3100,)
-    # println("size(ztop)=$(size(ztop))") # (600,) or (3100,)
-    # println("sum(x-> !ismissing(x) && isfinite(x), qcld)=$(sum(x-> !ismissing(x) && isfinite(x), qcld))") # 3100 x (600 or 300)
-    # println("sum(x-> !ismissing(x) && isfinite(x), F_cld)=$(sum(x-> !ismissing(x) && isfinite(x), F_cld))") # 3100 x (600 or 300)
+    # do not use acld for experiments; compute this order:  (F_cld, dq) -> w -> M -> a_i 
 
     dq = qcld .- exp.input.qm
     # fluxes are described as total vs. category i; and separately as in-cloud vs. all-sky.
-    # F_cld is in-cloud moisture flux [z, sink rate]; Fcld = M * dq; M = w * a
+    # F_cld is in-cloud moisture flux [z, sink rate]; Fcld = w * dq; M = w * a
     w = F_cld ./ dq           # in-cloud plume velocity [z, sink rate]
     M = w .* acld'            # all-sky mass flux M_i = a_i * w_i [z, sink rate]
     for i in axes(w,2)
