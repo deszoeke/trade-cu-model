@@ -790,13 +790,11 @@ function interp_a_i(ztop, cth_bin, cth_acc; zcb=700.0)
     return a_i
 end
 
+"partition the all-sky flux G_tot to cloud-top categories i using the cloud top height ztop from the cloud model."
 function cloudflux_allsky(tot_sink=tot_sink; x=x, 
     z, nz=length(z), dz=z[2]-z[1],
-    qm=qm, qs=qs, divg, E_cb, cth_acc, rhoL,
-    zi=4000.0, zcb=z[icb], icb=icb, qcb=qcb,
-    cth_bin, cth_nrm, 
-    control=true, a_i=nothing)
-    # a_i(ztop)
+    qm=qm, qs=qs, divg, E_cb, rhoL,
+    zi=4000.0, zcb=z[icb], icb=icb, qcb=qcb)
 
     # compute clouds
     _, qtc = cloud_qt(tot_sink; x=x, z=z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, icb=icb, qcb=qcb)
@@ -804,32 +802,43 @@ function cloudflux_allsky(tot_sink=tot_sink; x=x,
     # find cloud top heights ztop for each sink rate
     ztop = interp_cloudtop_height(z, qtc.-qs) # interpolate cloud top height from qd=qt-qs
 
-    if control
-        # Conservatively assign cloud fraction a_i from the GOES reference distribution:
-        # interpolate the survival function cth_acc at each ztop, then difference
-        # between consecutive cloud-top height intervals (conserves total cloud fraction).
-        a_i = interp_a_i(ztop, cth_bin, cth_acc; zcb=zcb)
-    end
     # otherwise use a_i passed directly (control=false experiments)
 
     # compute all sky flux at cloud top heights for control simulation
     G_i, G_tot = calc_G_allsky(ztop; z=z, E_cb=E_cb, divg=divg,
         qm=qm, rhoL=rhoL, zi=zi, zcb=zcb)
 
-    # compute in-cloud flux for each cloud category i
-    ii = .!ismissing.(a_i) .&& a_i .> 0.0
-    F_i = Vector{Union{Missing, Float64}}(missing, length(ztop))
-    F_i[ii] = G_i[ii] ./ a_i[ii] # Vectors if flux i is uniform
-    println("sum(isfinite, skipmissing(F_i)) = $(sum(isfinite, skipmissing(F_i),init=0))")
-
+    # CHANGE order of opertations
+    # normalized fluxes -> Gcld -> M  -> only then in-cloud flux
     # compute normalized cloud and precip fluxes for each sink rate, (z,i)
     Ncld, Np = compute_normalized_fluxes(tot_sink; x=x, z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, qtc=qtc, icb=icb, qcb=qcb)
-    # scale the normalized fluxes by the in-cloud flux F_i for each cloud category i
     Gcld = Ncld .* G_i'
-    Fcld = Ncld .* F_i'
-    Fp = Np .* F_i'
+    Gp   = Np   .* G_i'
+
+    # compute mass flux M for each cloud category i
+    dq = qtc .- qm
+    M = convert(Matrix{Union{Missing,Float64}}, Gcld ./ dq)
+    for i in axes(M,2) # blank out M above clouds
+        ii = z .> ztop[i]
+        M[ii,i] .= missing
+    end
+    # later use M ∝ a to get relative change in a (assuming constant w)
+
+    # DON'T compute in-cloud flux, w here!
+    # # compute in-cloud flux for each cloud category i
+    # ii = .!ismissing.(a_i) .&& a_i .> 0.0
+    # F_i = Vector{Union{Missing, Float64}}(missing, length(ztop))
+    # F_i[ii] = G_i[ii] ./ a_i[ii] # Vectors if flux i is uniform
+    # println("sum(isfinite, skipmissing(F_i)) = $(sum(isfinite, skipmissing(F_i),init=0))")
+
+    # # compute normalized cloud and precip fluxes for each sink rate, (z,i)
+    # # Ncld, Np = compute_normalized_fluxes(tot_sink; x=x, z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, qtc=qtc, icb=icb, qcb=qcb)
+    # # scale the normalized fluxes by the in-cloud flux F_i for each cloud category i
+    # Fcld = Ncld .* F_i'
+    # Fp = Np .* F_i'
     
-    return ztop, Fcld, Fp, qtc, a_i, Gcld
+    # # return ztop, Fcld, Fp, qtc, a_i, Gcld
+    return ztop, Gcld, Gp, qtc, M
 end
 
 "compute w for a single x and range of sink rates"
