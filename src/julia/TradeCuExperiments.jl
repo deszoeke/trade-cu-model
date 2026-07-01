@@ -317,7 +317,7 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     #     F2z=F2z, icb=findfirst(z .>= exp.input.zcb), 
     #     qcb=exp.input.qcb )
 
-    ztop, F_cld, F_pcp, qcld, acld, G_i = cloudflux_allsky(exp.input.tot_sink; 
+    ztop, F_cld, F_pcp, qcld, acld, G_cld = cloudflux_allsky(exp.input.tot_sink; 
         x=exp.input.x, z=z, nz=length(z), dz=z[2]-z[1],
         qm=exp.input.qm, qs=exp.input.qs,
         divg=exp.input.divg, E_cb=exp.input.E_cb,
@@ -332,9 +332,9 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
 
     dq = qcld .- exp.input.qm
     # fluxes are described as total vs. category i; and separately as in-cloud vs. all-sky.
-    # F_cld is in-cloud moisture flux [z, sink rate]; Fcld = w * dq; M = w * a
+    # F_cld is in-cloud moisture flux [z, sink rate]; Fcld = w * dq; M = w * a; Gcld = M * dq
     w = F_cld ./ dq           # in-cloud plume velocity [z, sink rate]
-    M = w .* acld'            # all-sky mass flux M_i = a_i * w_i [z, sink rate]
+    M = G_cld ./ dq           # all-sky mass flux M_i = a_i * w_i [z, sink rate]
     for i in axes(w,2)
         zi = ztop[i]
         if !ismissing(zi)
@@ -343,6 +343,8 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
             w[ii,i] .= missing
         end
     end
+    # ...now... get cloud area fraction a_i = M / w for each cloud top height bin
+    acld = G_cld ./ F_cld
 
     # println("size(w)=$(size(w))") # (3100, 600) or (3100, 3100)
     # println("da_ind = $(da_ind)") # OK
@@ -353,7 +355,7 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     exp.output.qc[:,da_ind] .= qcld
     exp.output.F_cld[:,da_ind] .= F_cld[:,da_ind]  # in-cloud moisture flux [z, sink rate]
     exp.output.F_pcp[:,da_ind] .= F_pcp[:,da_ind]
-    exp.output.G_cld[:,da_ind] .= F_cld[:,da_ind] .* acld' # all-sky cloud moisture flux [z, sink rate]
+    exp.output.G_cld[:,da_ind] .= G_cld[:,da_ind] # all-sky cloud moisture flux [z, sink rate]
     exp.output.G_pcp[:,da_ind] .= F_pcp[:,da_ind] .* acld'
 
     return nothing
