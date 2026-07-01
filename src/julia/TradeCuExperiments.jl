@@ -39,7 +39,6 @@ using VaporSat # dev ../../deps/VaporSat
 
 export ExpDict # dictionary contains defined experiments
 export init_context, define_experiments, define_experiment
-export integrate_experiment!
 export interp_sinkrate #, get_sinkrate
 # temporarily export more to experiment in outside environment
 export setup_experiments
@@ -301,72 +300,75 @@ function new_area(expt::Experiment, ctl::Experiment, ctx::ModelContext)
     return a_i_new
 end
 
-"integrate an experiment based on inputs, modify output in place"
-function integrate_experiment!(exp::Experiment; ctx::ModelContext)
-    println("integrate_experiment! $(exp.name)")
-    z = ctx.z
-    dz = ctx.dz
+# "integrate an experiment based on inputs, modify output in place"
+# function integrate_experiment!(exp::Experiment; ctx::ModelContext)
+#     println("integrate_experiment! $(exp.name)")
+#     z = ctx.z
+#     dz = ctx.dz
 
-   ztop, Gcld, Gp, qtc, M = cloudflux_allsky(exp.input.tot_sink; 
-        x=exp.input.x, z=z, nz=length(z), dz=z[2]-z[1],
-        qm=exp.input.qm, qs=exp.input.qs,
-        divg=exp.input.divg, E_cb=exp.input.E_cb,
-        rhoL=ctx.rhoL,
-        zi=ctx.zi, zcb=exp.input.zcb,
-        icb=findfirst(z.>=exp.input.zcb), qcb=exp.input.qcb) 
+#    ztop, Gcld, Gp, qtc, M = cloudflux_allsky(exp.input.tot_sink; 
+#         x=exp.input.x, z=z, nz=length(z), dz=z[2]-z[1],
+#         qm=exp.input.qm, qs=exp.input.qs,
+#         divg=exp.input.divg, E_cb=exp.input.E_cb,
+#         rhoL=ctx.rhoL,
+#         zi=ctx.zi, zcb=exp.input.zcb,
+#         icb=findfirst(z.>=exp.input.zcb), qcb=exp.input.qcb) 
 
-    # if a control simulation, use a_i from satellite data; else supply a_i from a previous experiment
-    if exp.input.control
-        # Conservatively assign cloud fraction a_i from the GOES reference distribution:
-        # interpolate the survival function cth_acc at each ztop, then difference
-        # between consecutive cloud-top height intervals (conserves total cloud fraction).
-        a_i = interp_a_i(ztop, cth_bin, cth_acc; zcb=zcb)
-    else
-        # use a ∝ M to get clouds; assume for every cloud category
-        a_i_old = exp.output.acld  # specified from relevant control
-        M_i_old = exp.output.M
-        a_i = M ./ M_i_old .* a_i_old # new cloud area fraction scaled up for new experiment
-    end
+#     # if a control simulation, use a_i from satellite data; else supply a_i from a previous experiment
+#     if exp.input.control
+#         # Conservatively assign cloud fraction a_i from the GOES reference distribution:
+#         # interpolate the survival function cth_acc at each ztop, then difference
+#         # between consecutive cloud-top height intervals (conserves total cloud fraction).
+#         cth_bin = exp.input.cth_bin
+#         cth_acc = exp.input.cth_acc
+#         zcb = exp.input.zcb
+#         a_i = interp_a_i(ztop, cth_bin, cth_acc; zcb=zcb)
+#     else
+#         # use a ∝ M to get clouds; assume for every cloud category
+#         a_i_old = exp.output.acld  # specified from relevant control
+#         M_i_old = exp.output.M
+#         a_i = M ./ M_i_old .* a_i_old # new cloud area fraction scaled up for new experiment
+#     end
 
-    # fluxes are described as total vs. category i; and separately as in-cloud vs. all-sky.
-    # compute in-cloud flux for each cloud category i
-    ii = .!ismissing.(a_i) .&& a_i .> 0.0
-    F_i = Vector{Union{Missing, Float64}}(missing, length(ztop))
-    F_i[ii] = G_i[ii] ./ a_i[ii] # Vectors if flux i is uniform
-    println("sum(isfinite, skipmissing(F_i)) = $(sum(isfinite, skipmissing(F_i),init=0))")
-    Fcld = Gcld .* a_i'
-    Fp   = Gp  .* a_i'
+#     # fluxes are described as total vs. category i; and separately as in-cloud vs. all-sky.
+#     # compute in-cloud flux for each cloud category i
+#     ii = .!ismissing.(a_i) .&& a_i .> 0.0
+#     F_i = Vector{Union{Missing, Float64}}(missing, length(ztop))
+#     F_i[ii] = G_i[ii] ./ a_i[ii] # Vectors if flux i is uniform
+#     println("sum(isfinite, skipmissing(F_i)) = $(sum(isfinite, skipmissing(F_i),init=0))")
+#     Fcld = Gcld .* a_i'
+#     Fp   = Gp  .* a_i'
 
-    da_ind = eachindex(exp.input.tot_sink)
-    # do not use acld for experiments; compute this order:  (F_cld, dq) -> w -> M -> a_i 
+#     da_ind = eachindex(exp.input.tot_sink)
+#     # do not use acld for experiments; compute this order:  (F_cld, dq) -> w -> M -> a_i 
 
-    dq = qcld .- exp.input.qm
-    # F_cld is in-cloud moisture flux [z, sink rate]; Fcld = w * dq; M = w * a; Gcld = M * dq
-    # w = M ./ a_i
-    w = F_cld ./ dq           # in-cloud plume velocity [z, sink rate]
-    for i in axes(w,2)
-        zi = ztop[i]
-        if !ismissing(zi)
-            ii = z .> zi
-            M[ii,i] .= missing
-            w[ii,i] .= missing
-        end
-    end
+#     dq = qcld .- exp.input.qm
+#     # F_cld is in-cloud moisture flux [z, sink rate]; Fcld = w * dq; M = w * a; Gcld = M * dq
+#     # w = M ./ a_i
+#     w = F_cld ./ dq           # in-cloud plume velocity [z, sink rate]
+#     for i in axes(w,2)
+#         zi = ztop[i]
+#         if !ismissing(zi)
+#             ii = z .> zi
+#             M[ii,i] .= missing
+#             w[ii,i] .= missing
+#         end
+#     end
 
-    # println("size(w)=$(size(w))") # (3100, 600) or (3100, 3100)
-    # println("da_ind = $(da_ind)") # OK
-    exp.output.acld[da_ind] .= a_i
-    exp.output.ztop[da_ind] .= ztop
-    exp.output.M[:,da_ind] .= M
-    exp.output.w[:,da_ind] .= w
-    exp.output.qc[:,da_ind] .= qcld
-    exp.output.F_cld[:,da_ind] .= Fcld[:,da_ind]  # in-cloud moisture flux [z, sink rate]
-    exp.output.F_pcp[:,da_ind] .= Fp[:,da_ind]
-    exp.output.G_cld[:,da_ind] .= Gcld[:,da_ind] # all-sky cloud moisture flux [z, sink rate]
-    exp.output.G_pcp[:,da_ind] .= Gp[:,da_ind] .* a_i'
+#     # println("size(w)=$(size(w))") # (3100, 600) or (3100, 3100)
+#     # println("da_ind = $(da_ind)") # OK
+#     exp.output.acld[da_ind] .= a_i
+#     exp.output.ztop[da_ind] .= ztop
+#     exp.output.M[:,da_ind] .= M
+#     exp.output.w[:,da_ind] .= w
+#     exp.output.qc[:,da_ind] .= qcld
+#     exp.output.F_cld[:,da_ind] .= Fcld[:,da_ind]  # in-cloud moisture flux [z, sink rate]
+#     exp.output.F_pcp[:,da_ind] .= Fp[:,da_ind]
+#     exp.output.G_cld[:,da_ind] .= Gcld[:,da_ind] # all-sky cloud moisture flux [z, sink rate]
+#     exp.output.G_pcp[:,da_ind] .= Gp[:,da_ind] .* a_i'
 
-    return nothing
-end
+#     return nothing
+# end
 
 calc_ql(exp) = @. max(0, exp.output.qc - exp.input.qs)
 
