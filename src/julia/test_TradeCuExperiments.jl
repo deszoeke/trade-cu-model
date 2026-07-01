@@ -32,7 +32,7 @@ PythonPlot.matplotlib.rcParams["font.sans-serif"] = ["Helvetica", "Arial", "Open
 includet("TradeCuExperiments.jl")
 using .TradeCuExperiments
 
-# interp_cloudtop_height = TradeCuModel.interp_cloudtop_height # testing this
+interp_cloudtop_height = TradeCuModel.interp_cloudtop_height # needed for plotting output
 
 # experiment with sink rate fixed by the control
 ctx, ExpDict, controlsink, sinkm5, sinkp5 = test_control_sink();
@@ -40,19 +40,19 @@ ctx, ExpDict, controlsink, sinkm5, sinkp5 = test_control_sink();
 # load standard parameters
 ( qm, qs, zcb, qcb, E_cb, x, divg, 
     tot_sink, cth_bin, rfv_acc, rfv_nrm, 
-    rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx)
+    rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx);
 # Get matched total sink rate and cloud top ensemble from control experiment
 # aligned with the z grid for use in experiments.
 # controlsink.output.acld; cloud fractions interpolated to ztop = z grid
 function good_sinks(controlsink; zb=700.0, zt=4000.0)
-    ii = findall(x-> zb<=x<=zt, ctx.z)
-    acld = controlsink.output.acld[ii]
-    # cumsum only over the extracted range: acld below zb is NaN (not missing) since
-    # interp_a_i fills with NaN for missing ztop; replace both NaN and missing with 0.
-    acc = cumsum(coalesce.(replace(acld, NaN => 0.0), 0.0))
-    (ctx.z[ii], controlsink.input.tot_sink[ii], acc, acld)
+    ii     = findall(x-> zb<=x<=zt, ctx.z)       # z-grid indices for 700–4000 m
+    ii_cth = findall(x-> zb<=x<=zt, ctx.cth_bin)  # GOES CTH indices for 700–4000 m
+    acld  = controlsink.output.acld               # model cloud fractions (331 elements)
+    sinkz = controlsink.input.tot_sink            # 331 elements
+    acc   = ctx.rfv_acc[ii_cth]                   # GOES survival function (decreasing)
+    (ctx.z[ii], sinkz, acc, acld)
 end
-ztop, sinkz, acc, acld = good_sinks(controlsink)
+ztop, sinkz, acc, acld = good_sinks(controlsink);
 
 # DIM experiments with different sink rates, to simulate mesoscale organization changes
 DIMsink = define_experiment(; 
@@ -68,7 +68,8 @@ DIMsink = define_experiment(;
     tot_sink=sinkz, # sinkz decreases with index
     cth_bin= ztop,
     rfv_acc= acc,
-    rfv_nrm= acld );
+    rfv_nrm= acld,
+    control=false, a_i=controlsink.output.acld ); # how to specify the cloud fraction?
 DIMsinkm5 = define_experiment(; 
     name="DIMsink-5%", description="DIM sink rate -5%",
     qm= (1 .- 0.95*(1 .- qm./qs)).*qs*1.07, qs=1.07*qs, zcb=zcb,
@@ -76,7 +77,8 @@ DIMsinkm5 = define_experiment(;
     tot_sink=sinkz*0.95, # sinkz decreases with index
     cth_bin= ztop,
     rfv_acc= acc, 
-    rfv_nrm= acld ); # how to specify the cloud fraction?
+    rfv_nrm= acld,
+    control=false, a_i=controlsink.output.acld ); # how to specify the cloud fraction?
 DIMsinkp5 = define_experiment(;
     name="DIMsink+5%", description="DIM sink rate +5%",
     qm= (1 .- 0.95*(1 .- qm./qs)).*qs*1.07, qs=1.07*qs, zcb=zcb,
@@ -84,7 +86,8 @@ DIMsinkp5 = define_experiment(;
     tot_sink=sinkz*1.05, # sinkz decreases with index
     cth_bin= ztop,
     rfv_acc= acc, 
-    rfv_nrm= acld );
+    rfv_nrm= acld,
+    control=false, a_i=controlsink.output.acld );
 # integrate
 for exp in [DIMsink, DIMsinkm5, DIMsinkp5]
     println(exp.name)
@@ -97,19 +100,24 @@ end
 a_i = new_area( ExpDict["DIMsink"], ExpDict["control-sink"], ctx )
 # possibly only cloud BASE mass flux is a good indicator of cloud fraction.
 
-"plot cloud vertical velocity for an experiment"
-function plot_exp(e, var, ctx=ctx)
-    ztop = interp_cloudtop_height(ctx.z, e.output.qc .- e.input.qs)
+# plotting experiment structure unpackers and calculators
+unpack(v,e) = foldl(getfield, v; init=e)
+multop(f, v, T...) = f.(broadcast(x->unpack(v,x), T)...)
+# computes dlnM output between experiments e-c
+f(x,y) = log(x/y)
+dlnM = multop(f, [:output, :M], ExpDict["DIMsink"], ExpDict["control-sink"]) 
+
+function plot_exp_var(e, var::Symbol, ctx=ctx; kwargs...)
+    ztop = e.output.ztop
     iz = findall(500.0 .<= ctx.z .<= 3500.0) # 10 m bins, z=500 m
-    ik = findall(x-> !ismissing(x) && isfinite(x), ztop) # tot_sink -> ztop
-    q = getfield(e.output, var)
-    pcolormesh(ztop[ik]/1e3, ctx.z[iz]/1e3, q[iz,ik], 
-        cmap=ColorMap("BuPu")) #, vmin=0.0, vmax=5)
+    ik = findall(x-> !ismissing(x) && isfinite(x), ztop)
+    pcolormesh(ztop[ik]/1e3, ctx.z[iz]/1e3, getfield(e.output, var)[iz,ik], 
+        cmap=ColorMap("BuPu"), kwargs...)
     colorbar()
+    plot(ztop[ik]/1e3, e.output.acld[ik], "w-", linewidth=0.5, label="cloud_i fraction")
     ylim([0.5, 3.5]); xlim([0.5, 3.5])
     xlabel("cloud top height (km)")
     ylabel("z coordinate (km)")
-    title("$(e.name) $(string(var))")
     gca().set_aspect("equal")
 end
 
@@ -123,7 +131,7 @@ function plot_exp_w(e, ctx=ctx; kwargs...)
         cmap=ColorMap("BuPu")) #, norm=log_norm, kwargs...)
     colorbar()
     ylim([0.5, 3.5]); xlim([0.5, 3.5])
-    xlabel("cloud top height (km)")
+    xlabel("control cloud top height (km)")
     ylabel("z coordinate (km)")
     title("cloud vertical velocity (m/s)")
     gca().set_aspect("equal")
@@ -141,12 +149,14 @@ function plot_exp_qc(e, ctx=ctx; kwargs...)
         cmap=get_cmap("BuPu",10), vmin=0.0, vmax=2.0, kwargs...)
     colorbar()
     ylim([0.5, 3.5]); xlim([0.5, 3.5])
-    xlabel("cloud top height (km)")
+    xlabel("control cloud top height (km)")
     ylabel("z coordinate (km)")
     title("cloud liquid (g/kg)")
     gca().set_aspect("equal")
     # tight_layout()
 end
+
+
 
 # plot cloud w
 clf(); fig = figure()
@@ -195,57 +205,28 @@ tight_layout()
 #     savefig("experiment_cloud_liquid.$f")
 # end
 
-
-# plot the experiments where the cloud top height change
-# propagates to the flux partition.
 # plot cloud w
 expmts = ["control-sink", "DIMsink", "DIMsink-5%"]
-
 clf(); fig = figure(); fig.set_size_inches([10, 5])
-subplot(2,3,1)
-plot_exp_w(ExpDict[expmts[1]], ctx)
-plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title(expmts[1])
-gca().set_aspect("equal")
-subplot(2,3,2)
-plot_exp_w(ExpDict[expmts[2]], ctx)
-plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title(expmts[2])
-gca().set_aspect("equal")
-subplot(2,3,3)
-plot_exp_w(ExpDict[expmts[3]], ctx)
-plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title(expmts[3])
-gca().set_aspect("equal")
+for (i, exp) in enumerate(expmts)
+    subplot(2,3,i)
+    plot_exp_w(ExpDict[exp], ctx)
+    plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
+    title(exp)
+    gca().set_aspect("equal")
+end
 suptitle("cloud vertical velocity (m/s)")
-tight_layout()
-# for f in ["png", "pdf", "svg"]
-#     savefig("experiment_cloud_vertical_velocity.$f")
-# end
-
-# plot cloud qc liquid
-# clf() 
-subplot(2,3,4)
-plot_exp_qc(ExpDict[expmts[1]], ctx)
-plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title(expmts[1])
-gca().set_aspect("equal")
-subplot(2,3,5)
-plot_exp_qc(ExpDict[expmts[2]], ctx)
-plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title(expmts[2])
-gca().set_aspect("equal")
-subplot(2,3,6)
-plot_exp_qc(ExpDict[expmts[3]], ctx)
-plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title(expmts[3])
-gca().set_aspect("equal")
-suptitle("cloud vertical velocity (m/s), cloud liquid (g/kg)")
+for (i, exp) in enumerate(expmts)
+    subplot(2,3,3+i)
+    plot_exp_qc(ExpDict[exp], ctx)
+    plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
+    title(exp)
+    gca().set_aspect("equal")
+end
 tight_layout()
 # for f in ["png", "pdf", "svg"]
 #     savefig("experiment_cloud_liquid.$f")
 # end
-
 
 
 

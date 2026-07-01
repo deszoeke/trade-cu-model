@@ -200,9 +200,9 @@ function define_control_sink_experiment(; ctx::ModelContext, sinkz=sinkz,
         rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx)
 
     return Experiment( name, description,
-            ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, sinkz, cth_bin, rfv_acc, rfv_nrm, 
+            ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, sinkz, cth_bin, rfv_acc, rfv_nrm,
             control, a_i),
-            allocate_output(nz,nz) ) # note nz,nz
+            allocate_output(nz, length(sinkz)) )
 end
 
 # function define_DIM_sink_experiment(; ctx::ModelContext, sinkz=sinkz)
@@ -355,11 +355,11 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     #     acld = cloud_i_area(ctx) # cloud area fraction in sink rate & cloud top height bin i
     # end
 
-    println("size(qcld)=$(size(qcld))") # (600,) or (3100,)
-    println("size(acld)=$(size(acld))") # (600,) or (3100,)
-    println("size(ztop)=$(size(ztop))") # (600,) or (3100,)
-    println("sum(x-> !ismissing(x) && isfinite(x), qcld)=$(sum(x-> !ismissing(x) && isfinite(x), qcld))") # 3100 x (600 or 300)
-    println("sum(x-> !ismissing(x) && isfinite(x), F_cld)=$(sum(x-> !ismissing(x) && isfinite(x), F_cld))") # 3100 x (600 or 300)
+    # println("size(qcld)=$(size(qcld))") # (600,) or (3100,)
+    # println("size(acld)=$(size(acld))") # (600,) or (3100,)
+    # println("size(ztop)=$(size(ztop))") # (600,) or (3100,)
+    # println("sum(x-> !ismissing(x) && isfinite(x), qcld)=$(sum(x-> !ismissing(x) && isfinite(x), qcld))") # 3100 x (600 or 300)
+    # println("sum(x-> !ismissing(x) && isfinite(x), F_cld)=$(sum(x-> !ismissing(x) && isfinite(x), F_cld))") # 3100 x (600 or 300)
 
     dq = qcld .- exp.input.qm
     # fluxes are described as total vs. category i; and separately as in-cloud vs. all-sky.
@@ -457,18 +457,20 @@ function test_control_sink()
     "DIM" ]
 
     # get sink rate as a function of cloud top height from control
-    sinkz = interp_sinkrate( ExpDict["control"]; ctx=ctx ) # extrapolates!
+    sinkz_full = interp_sinkrate( ExpDict["control"]; ctx=ctx ) # nz-length, extrapolates!
+    ii_cld = findall(700 .≤ ctx.z .≤ 4000)  # 331 elements matching GOES CTH range
+    sinkz = sinkz_full[ii_cld]              # sink rates for cloud tops at 700–4000 m
 
     # a_i = cloud_i_area( ctx )
-    controlsink = define_control_sink_experiment(ctx=ctx, sinkz=     sinkz,
+    controlsink = define_control_sink_experiment(ctx=ctx, sinkz=sinkz,
         name="control-sink", description="control sink rate experiment",
         control=true, a_i=nothing)
-    a_i = controlsink.output.acld # sized for new sink rate bins
+    a_i = controlsink.output.acld # sized for 331 sink rate bins
 
-    sinkm5      = define_control_sink_experiment(ctx=ctx, sinkz=0.95*sinkz,
+    sinkm5 = define_control_sink_experiment(ctx=ctx, sinkz=0.95*sinkz,
         name="control-sink-5%", description="control sink rate experiment -5%",
         control=false, a_i=a_i)
-    sinkp5      = define_control_sink_experiment(ctx=ctx, sinkz=1.05*sinkz,
+    sinkp5 = define_control_sink_experiment(ctx=ctx, sinkz=1.05*sinkz,
         name="control-sink+5%", description="control sink rate experiment +5%",
         control=false, a_i=a_i)
     integrate_experiment!(controlsink, ctx=ctx)

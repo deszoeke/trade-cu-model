@@ -765,14 +765,31 @@ function compute_normalized_fluxes(tot_sink=tot_sink; x=x,
     Fcld, Fp # normalized by F2z
 end
 
-"interpolate cloud fraction a_i for each cloud top height category i"
-function interp_a_i(ztop, cth_bin, cth_nrm)
-    ii = @. ( !ismissing(ztop) )
+"""
+interp_a_i(ztop, cth_bin, cth_acc; zcb)
+Conservatively interpolate cloud area fraction for each cloud top height category i.
+Interpolates the cumulative survival function cth_acc (decreasing with height,
+cth_bin ascending) at each ztop value, then differences consecutive values to
+get the fraction in each height interval:
+  a_i[1] = cth_acc(zcb)       - cth_acc(ztop[1])      # interval [zcb, ztop[1]]
+  a_i[k] = cth_acc(ztop[k-1]) - cth_acc(ztop[k])      # interval [ztop[k-1], ztop[k]]
+This conserves total cloud fraction when ztop values shift between experiments.
+Only called for control experiments (control=true in cloudflux_allsky).
+"""
+function interp_a_i(ztop, cth_bin, cth_acc; zcb=700.0)
     a_i = fill(NaN, length(ztop))
-    jj = @. ( !ismissing(cth_nrm) && !ismissing(cth_bin) &&
-              isfinite(coalesce(cth_nrm, NaN)) && isfinite(coalesce(cth_bin, NaN)) )
-    a_i[ii] = interpolate_ascending(coalesce.(cth_bin[jj],NaN), 
-                                    coalesce.(cth_nrm[jj],NaN) ).(ztop[ii]) # interpolate cloud fraction for each cloud category i
+    jj = @. isfinite(coalesce(cth_acc, NaN)) && isfinite(coalesce(cth_bin, NaN))
+    any(jj) || return a_i
+    # cth_bin is ascending; build interpolator for the survival function
+    itp = interpolate_ascending(coalesce.(cth_bin[jj], NaN), coalesce.(cth_acc[jj], NaN))
+    ii = findall(!ismissing, ztop)
+    isempty(ii) && return a_i
+    # sort ztop ascending for conservative height-interval differencing
+    si = ii[sortperm(coalesce.(ztop[ii], NaN))]
+    acc = itp.(coalesce.(ztop[si], NaN))
+    acc_zcb = itp(zcb)
+    a_i[si[1]] = max(0.0, acc_zcb - acc[1])                  # interval [zcb, ztop[1]]
+    a_i[si[2:end]] .= max.(0.0, acc[1:end-1] .- acc[2:end])  # interval [ztop[k-1], ztop[k]]
     return a_i
 end
 
@@ -791,11 +808,12 @@ function cloudflux_allsky(tot_sink=tot_sink; x=x,
     ztop = interp_cloudtop_height(z, qtc.-qs) # interpolate cloud top height from qd=qt-qs
 
     if control
-        # interpolate cloud fraction a_i for each cloud top height category i from the
-        # reference distribution from satellite data.
-        a_i = interp_a_i(ztop, cth_bin, cth_nrm)
+        # Conservatively assign cloud fraction a_i from the GOES reference distribution:
+        # interpolate the survival function cth_acc at each ztop, then difference
+        # between consecutive cloud-top height intervals (conserves total cloud fraction).
+        a_i = interp_a_i(ztop, cth_bin, cth_acc; zcb=zcb)
     end
-    # otherwise use a_i[size(qtc,2)] matching ztop
+    # otherwise use a_i passed directly (control=false experiments)
 
     # compute all sky flux at cloud top heights for control simulation
     G_i, G_tot = calc_G_allsky(ztop; z=z, E_cb=E_cb, divg=divg,
