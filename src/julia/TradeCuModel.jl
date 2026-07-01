@@ -285,8 +285,8 @@ end
 # get An-Yi's aggregated GOES cloud fraction vs height data
 function get_goes_cloud_data()
     NCDataset("../../data/satellite/GOES-16/goes16_binned_low4km_20200115_20200219.nc") do dsa
-        rfv_nrm = mean(dsa[:rfv_nrm][:,:], dims=2)[:]
-        rfv_acc = mean(dsa[:rfv_acc][:,:], dims=2)[:]
+        rfv_nrm = tmean(dsa[:rfv_nrm][:,:]) # skipmissing: don't let fill values on individual days blank low-height bins
+        rfv_acc = tmean(dsa[:rfv_acc][:,:])
         cth_bin = 1e3 * dsa[:cth_bin][:] # km -> m
         return rfv_nrm, rfv_acc, cth_bin
     end
@@ -769,7 +769,8 @@ end
 function interp_a_i(ztop, cth_bin, cth_nrm)
     ii = @. ( !ismissing(ztop) )
     a_i = fill(NaN, length(ztop))
-    jj = @. ( !ismissing(cth_nrm) && !ismissing(cth_bin) )
+    jj = @. ( !ismissing(cth_nrm) && !ismissing(cth_bin) &&
+              isfinite(coalesce(cth_nrm, NaN)) && isfinite(coalesce(cth_bin, NaN)) )
     a_i[ii] = interpolate_ascending(coalesce.(cth_bin[jj],NaN), 
                                     coalesce.(cth_nrm[jj],NaN) ).(ztop[ii]) # interpolate cloud fraction for each cloud category i
     return a_i

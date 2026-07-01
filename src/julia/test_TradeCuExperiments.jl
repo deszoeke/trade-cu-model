@@ -46,8 +46,11 @@ ctx, ExpDict, controlsink, sinkm5, sinkp5 = test_control_sink();
 # controlsink.output.acld; cloud fractions interpolated to ztop = z grid
 function good_sinks(controlsink; zb=700.0, zt=4000.0)
     ii = findall(x-> zb<=x<=zt, ctx.z)
-    (ctx.z[ii], controlsink.input.tot_sink[ii], 
-     cumsum(controlsink.output.acld)[ii], controlsink.output.acld[ii])
+    acld = controlsink.output.acld[ii]
+    # cumsum only over the extracted range: acld below zb is NaN (not missing) since
+    # interp_a_i fills with NaN for missing ztop; replace both NaN and missing with 0.
+    acc = cumsum(coalesce.(replace(acld, NaN => 0.0), 0.0))
+    (ctx.z[ii], controlsink.input.tot_sink[ii], acc, acld)
 end
 ztop, sinkz, acc, acld = good_sinks(controlsink)
 

@@ -266,7 +266,7 @@ function stretch_to_new_ztop( oldQ::Vector, oldztop::Number, newztop::Number, ct
     if !ismissing(oldztop) && isfinite(oldztop) && !ismissing(newztop) && isfinite(newztop)
         Q = coalesce.(oldQ, NaN)
         ii = good.(oldQ)
-        jj = zcb .<= z .<= oldztop # only interpolate at z between cloud base and old cloud top height
+        jj = zcb .<= z .<= newztop # interpolate at z between cloud base and NEW cloud top height
         newQ[jj] = interpolate_ascending( normz.(z, oldztop, zcb)[ii], Q[ii] ).(normz.(z[jj], newztop, zcb))
     end
     return newQ
@@ -294,9 +294,7 @@ function new_area(expt::Experiment, ctl::Experiment, ctx::ModelContext)
     for i in eachindex(ztop)
         if !ismissing(ztop[i]) && isfinite(ztop[i]) && !ismissing(ztop_old[i]) && isfinite(ztop_old[i])
             @assert ztop[i] > zcb
-            print("ztop[$i] = $(ztop[i]), ztop_old[$i] = $(ztop_old[i])\n")
             tmp = new_area( expt.output.M[:,i], ztop[i], ctl.output.w[:,i], ztop_old[i], ctx )
-            print("size(tmp) = $(size(tmp))\n")
             a_i_new[:,i] = coalesce.(tmp, NaN)
         end
     end
