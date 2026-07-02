@@ -142,15 +142,12 @@ dlna(ExpDict["DIM"], ExpDict["control"])             #  = +3.7%
 
 dlna_limit_index(ExpDict["subsidence-5%"], ExpDict["control"])   #    -3.0%
 dlna_limit_index(ExpDict["q&qs+7%"], ExpDict["control"])         #    -5.8%
-dlna_limit_index(ExpDict["Ecb+2%"], ExpDict["control"])          #  = -5.8% makes no difference
 dlna_limit_index(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    +3.7% # HUGE SENSITIVITY to this!
-dlna_limit_index(ExpDict["DIM"], ExpDict["control"])             #  = +3.7%
 
 dlna_limit_ztop(ExpDict["subsidence-5%"], ExpDict["control"])   #    -3.0%
 dlna_limit_ztop(ExpDict["q&qs+7%"], ExpDict["control"])         #    -6.8%
-dlna_limit_ztop(ExpDict["Ecb+2%"], ExpDict["control"])          #  = -6.8%
 dlna_limit_ztop(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    -0.73% # sensitive to extra clouds at top!
-dlna_limit_ztop(ExpDict["DIM"], ExpDict["control"])             #  = -0.73%
+
 # Inverse dependence of mass flux on Δq, M = G/(Δq) is key,
 # so that increasing Δq decreases M = a*w and thus cloud fraction.
 
@@ -231,8 +228,10 @@ c = ExpDict["control"]
 for (i, exp) in enumerate(expmts[3:4])
     ax = axs[i-1]
     e = ExpDict[exp]
-    plot_exp_var(e, 100*log.(max.(0, dq_cld(e)./dq_cld(c))), 
-        ctx; ax=ax, cmap=get_cmap("BuPu", 18), vmin=0, vmax=9)
+    qx = (ctx.z .- e.output.ztop' .< 0) .* (100*log.(max.(0, dq_cld(e)./dq_cld(c)))) # % change in Δq relative to control
+    plot_exp_var(e, qx, ctx; ax=ax, cmap=get_cmap("BuPu", 18), vmin=0, vmax=9)
+    ax.plot([0.7, 3.5], [0.7, 3.5], "k-", linewidth=0.5)
+    ax.plot([0.7, 3.5], [0.7, 0.7], "k-", linewidth=0.5)
     ax.set_title(exp)
     (i-1)%3 == 0 && ax.set_ylabel("Δq (m/s)\n\nz coordinate (km)", size=12)
 end
