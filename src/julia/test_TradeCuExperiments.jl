@@ -171,22 +171,6 @@ font_settings = Dict(
 matplotlib.rcParams.update(font_settings)
 
 
-# plot effect of experiments on cloud fraction profiles
-expmts = ["control-sink", "DIMsink", "DIMsink-5%", "DIMsink+5%"]
-fig = gcf(); fig.clf()
-ax = fig.add_subplot(1,1, 1)
-for (i, exp) in enumerate(expmts)
-    ztop = ExpDict[exp].output.ztop
-    ik = findall(x-> !ismissing(x) && isfinite(x), ztop)
-    ac = cumsum(ExpDict[exp].output.acld[ik])
-    ax.plot(ac*1e2, ztop[ik]/1e3, linewidth=0.5, label="$(exp), a=$(round(maximum(ac*100), digits=1))%")
-end
-ax.set_xlabel("cumulative cloud fraction (%)")
-ax.set_ylabel("cloud top height (km)")
-ax.set_xlim([0, 10]); ax.set_ylim([0.5, 3.5])
-ax.legend(frameon=false)
-
-
 "plot effect of experiments on cloud fraction profiles"
 function plot_cld_tot_profs(expmts)
     ax = fig.add_subplot(1,1, 1)
@@ -194,7 +178,7 @@ function plot_cld_tot_profs(expmts)
         ztop = ExpDict[exp].output.ztop
         ik = findall(x-> !ismissing(x) && isfinite(x), ztop)
         ac = cumsum(ExpDict[exp].output.acld[ik])
-        ax.plot(ac*1e2, ztop[ik]/1e3, linewidth=0.5, marker=".", label="$(exp), a=$(round(maximum(ac*100), digits=1))%")
+        ax.plot(ac*1e2, ztop[ik]/1e3, linewidth=0.5, label="$(exp), a=$(round(maximum(ac*100), digits=1))%")
     end
     ax.set_xlabel("cumulative cloud fraction (%)")
     ax.set_ylabel("cloud top height (km)")
@@ -239,7 +223,20 @@ plot_exp_var(e::Experiment, var::Symbol, ctx=ctx; ax=nothing, kwargs...) = plot_
 plot_exp_var(f, e::Experiment, var::Symbol, ctx=ctx; ax=nothing, kwargs...) = plot_exp_var(e::Experiment, f.(getfield(e.output, var)), ctx; ax=ax, kwargs...)
 
 # plot Δq = qc-qm
-dq_cld(e) = getfield(e.output, :qc) .- getfield(e.input, :qm)
+dq_cld(e) = e.output.qc .- e.input.qm
+expmts = ["control", "subsidence-5%", "q&qs+7%", "(1-RH)-5%"] # the last is equivalent to DIM
+fig = gcf(); fig.set_size_inches([5, 10]); fig.clf()
+axs = fig.subplots(2, 1)
+c = ExpDict["control"]
+for (i, exp) in enumerate(expmts[3:4])
+    ax = axs[i-1]
+    e = ExpDict[exp]
+    plot_exp_var(e, 100*log.(max.(0, dq_cld(e)./dq_cld(c))), 
+        ctx; ax=ax, cmap=get_cmap("BuPu", 18), vmin=0, vmax=9)
+    ax.set_title(exp)
+    (i-1)%3 == 0 && ax.set_ylabel("Δq (m/s)\n\nz coordinate (km)", size=12)
+end
+tight_layout()
 
 # plot cloud w
 expmts = ["control-sink", "DIMsink", "DIMsink-5%"]
