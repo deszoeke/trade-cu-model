@@ -878,12 +878,12 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     else
         # cloud fraction is supplied via exp.input.a_i (e.g., controlsink.output.acld)
         isnothing(exp.input.a_i_control) && error("$(exp.name): non-control experiment requires a_i_control in ModelInput")
-        # use a ∝ M to get clouds; assume for every cloud category
+        # assume a ∝ M at cloud base for every cloud category to scale experiment clouds from control clouds
         icb = findfirst(z.>=zcb) # use cloud base mass flux ratio
         a_i_control = exp.input.a_i_control
         M_i_control = exp.input.M_i_control[icb,:]
         fac = M[icb,:] ./ M_i_control
-        a_i = fac .* a_i_control # Matrix new cloud area fraction scaled up for new experiment
+        a_i = fac .* a_i_control # Vector, new cloud area fraction scaled up for new experiment
     end
     println("size(Gcld) = $(size(Gcld)), size(a_i) = $(size(a_i))")
     Fcld = Gcld ./ a_i'

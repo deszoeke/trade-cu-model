@@ -115,6 +115,102 @@ end
 # inventory(ExpDict["control-sink"].input)
 # inventory(ExpDict["control-sink"].output)
 
+# analyze total cloud fraction from experiments
+totcld(e) =  sum(filter(isfinite,skipmissing(e.output.acld)))
+# totcld(ExpDict["control-sink"]), totcld(ExpDict["DIMsink"]), totcld(ExpDict["DIMsink-5%"]), totcld(ExpDict["DIMsink+5%"])
+dlna(e,c) = log(totcld(e)/totcld(c))
+# limiting to same sink rate has no effect on E1 experiments
+function dlna_limit_index(e,c) 
+    ik = findall(x-> !ismissing(x) && isfinite(x), c.output.ztop)
+    totcld(e) =  sum(filter(isfinite,skipmissing(e.output.acld[ik])))
+    log(totcld(e)/totcld(c))
+end
+function dlna_limit_ztop(e,c) # do not go above the highest control cloud top height
+    ik = findall(x-> !ismissing(x) && isfinite(x), c.output.ztop)
+    mz = maximum(c.output.ztop[ik])
+    ij = findall(x-> !ismissing(x) && isfinite(x) && x<=mz, e.output.ztop)
+    println("max ztop for control = $(mz/1e3) km, max ztop for experiment = $(maximum(e.output.ztop[ij])/1e3) km")
+    log(sum(e.output.acld[ij])/sum(c.output.acld[ik]))
+end
+
+# E1 experiments
+dlna(ExpDict["subsidence-5%"], ExpDict["control"])   #    -3.0%
+dlna(ExpDict["q&qs+7%"], ExpDict["control"])         #    -5.8%
+dlna(ExpDict["Ecb+2%"], ExpDict["control"])          #  = -5.8% makes no difference
+dlna(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    +3.7% # HUGE SENSITIVITY to this!
+dlna(ExpDict["DIM"], ExpDict["control"])             #  = +3.7%
+
+dlna_limit_index(ExpDict["subsidence-5%"], ExpDict["control"])   #    -3.0%
+dlna_limit_index(ExpDict["q&qs+7%"], ExpDict["control"])         #    -5.8%
+dlna_limit_index(ExpDict["Ecb+2%"], ExpDict["control"])          #  = -5.8% makes no difference
+dlna_limit_index(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    +3.7% # HUGE SENSITIVITY to this!
+dlna_limit_index(ExpDict["DIM"], ExpDict["control"])             #  = +3.7%
+
+dlna_limit_ztop(ExpDict["subsidence-5%"], ExpDict["control"])   #    -3.0%
+dlna_limit_ztop(ExpDict["q&qs+7%"], ExpDict["control"])         #    -6.8%
+dlna_limit_ztop(ExpDict["Ecb+2%"], ExpDict["control"])          #  = -6.8%
+dlna_limit_ztop(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    -0.73% # sensitive to extra clouds at top!
+dlna_limit_ztop(ExpDict["DIM"], ExpDict["control"])             #  = -0.73%
+# Inverse dependence of mass flux on Δq, M = G/(Δq) is key,
+# so that increasing Δq decreases M = a*w and thus cloud fraction.
+
+# E2 sink rate experiments
+dlna(ExpDict["DIMsink"], ExpDict["control-sink"])    #    +4.5%
+dlna(ExpDict["DIMsink-5%"], ExpDict["control-sink"]) #    +6.2%
+dlna(ExpDict["DIMsink+5%"], ExpDict["control-sink"]) #    -2.4%
+
+# make fonts bigger by mutating rcParams
+font_settings = Dict(
+    "font.size" => 14,       # Base size
+    "axes.titlesize" => 18,  # Subplot titles
+    "axes.labelsize" => 16,  # X/Y labels
+    "xtick.labelsize" => 14, # X-axis numbers
+    "ytick.labelsize" => 14, # Y-axis numbers
+    "legend.fontsize" => 14  # Legend text
+)
+matplotlib.rcParams.update(font_settings)
+
+
+# plot effect of experiments on cloud fraction profiles
+expmts = ["control-sink", "DIMsink", "DIMsink-5%", "DIMsink+5%"]
+fig = gcf(); fig.clf()
+ax = fig.add_subplot(1,1, 1)
+for (i, exp) in enumerate(expmts)
+    ztop = ExpDict[exp].output.ztop
+    ik = findall(x-> !ismissing(x) && isfinite(x), ztop)
+    ac = cumsum(ExpDict[exp].output.acld[ik])
+    ax.plot(ac*1e2, ztop[ik]/1e3, linewidth=0.5, label="$(exp), a=$(round(maximum(ac*100), digits=1))%")
+end
+ax.set_xlabel("cumulative cloud fraction (%)")
+ax.set_ylabel("cloud top height (km)")
+ax.set_xlim([0, 10]); ax.set_ylim([0.5, 3.5])
+ax.legend(frameon=false)
+
+
+"plot effect of experiments on cloud fraction profiles"
+function plot_cld_tot_profs(expmts)
+    ax = fig.add_subplot(1,1, 1)
+    for (i, exp) in enumerate(expmts)
+        ztop = ExpDict[exp].output.ztop
+        ik = findall(x-> !ismissing(x) && isfinite(x), ztop)
+        ac = cumsum(ExpDict[exp].output.acld[ik])
+        ax.plot(ac*1e2, ztop[ik]/1e3, linewidth=0.5, marker=".", label="$(exp), a=$(round(maximum(ac*100), digits=1))%")
+    end
+    ax.set_xlabel("cumulative cloud fraction (%)")
+    ax.set_ylabel("cloud top height (km)")
+    ax.set_xlim([0, 10]); ax.set_ylim([0.5, 3.5])
+    ax.legend(frameon=false)
+    return ax
+end
+
+expmts = ["control", "subsidence-5%", "q&qs+7%", "(1-RH)-5%"] # the last is equivalent to DIM
+fig = gcf(); fig.clf()
+ax = plot_cld_tot_profs(expmts)
+
+expmts = ["control-sink", "DIMsink", "DIMsink-5%", "DIMsink+5%"]
+fig = gcf(); fig.clf()
+ax = plot_cld_tot_profs(expmts)
+
 # plotting experiment structure unpackers and calculators
 unpack(v,e) = foldl(getfield, v; init=e)
 multop(f, v, T...) = f.(broadcast(x->unpack(v,x), T)...)
@@ -134,13 +230,16 @@ function plot_exp_var(e::Experiment, q::Matrix, ctx=ctx; ncolor=10, ax=nothing, 
     pcm = ax.pcolormesh(ztop[ik]/1e3, ctx.z[iz]/1e3, q[iz,ik]; cmap=get_cmap("BuPu", ncolor), kwargs...)
     ax.get_figure().colorbar(pcm, ax=ax)
     ax.plot(ztop[ik]/1e3, e.output.acld[ik], "w-", linewidth=0.5, label="cloud_i fraction")
-    ax.set_ylim([0.5, 3.5]); ax.set_xlim([0.5, 3.5])
+    ax.plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
+    ax.set_ylim([0.5, 3.5]); ax.set_xlim([0.5, 3.5]); ax.set_yticks([1.0, 2.0, 3.0],["1", "2", "3"])
     ax.set_aspect("equal")
 end
 "pcolormesh an experiment output variable var"
 plot_exp_var(e::Experiment, var::Symbol, ctx=ctx; ax=nothing, kwargs...) = plot_exp_var(e::Experiment, getfield(e.output, var), ctx; ax=ax, kwargs...)
 plot_exp_var(f, e::Experiment, var::Symbol, ctx=ctx; ax=nothing, kwargs...) = plot_exp_var(e::Experiment, f.(getfield(e.output, var)), ctx; ax=ax, kwargs...)
 
+# plot Δq = qc-qm
+dq_cld(e) = getfield(e.output, :qc) .- getfield(e.input, :qm)
 
 # plot cloud w
 expmts = ["control-sink", "DIMsink", "DIMsink-5%"]
@@ -149,25 +248,20 @@ axs = fig.subplots(2, 3)
 for (i, exp) in enumerate(expmts)
     ax = axs[0, i-1]
     plot_exp_var(ExpDict[exp], :w, ctx; vmax=1.0, ax=ax)
-    ax.plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
     ax.set_title(exp)
     (i-1)%3 == 0 && ax.set_ylabel("in-cloud vertical velocity (m/s)\n\nz coordinate (km)", size=12)
-    ax.set_aspect("equal")
 end
 for (i, exp) in enumerate(expmts)
     ax = axs[1, i-1]
     plot_exp_var(ExpDict[exp], 1e3*calc_ql(ExpDict[exp]), ctx; vmin=0.0, vmax=2.0, ax=ax)
-    ax.plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-    ax.set_title(exp)
+    # ax.set_title(exp)
     (i-1)%3 == 0 && ax.set_ylabel("cloud liquid water (g/kg)\n\nz coordinate (km)", size=12)
     ax.set_xlabel("cloud top height (km)")
-    ax.set_aspect("equal")
 end
 fig.tight_layout()
 for f in ["png", "pdf", "svg"]
     fig.savefig("experiment_cloud_vel_liquid.$f")
 end
-
 
 
 """
