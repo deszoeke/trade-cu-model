@@ -100,7 +100,7 @@ end
 # a_i = new_area( ExpDict["DIMsink"], ExpDict["control-sink"], ctx )
 # possibly only cloud BASE mass flux is a good indicator of cloud fraction.
 
-# quick count of valid output fields
+# quick count of valid fields
 good(x) = !ismissing(x) && isfinite(x)
 function inventory(e)
     for f in fieldnames(typeof(e))
@@ -112,8 +112,8 @@ function inventory(e)
         end
     end
 end
-inventory(ExpDict["control-sink"].input)
-inventory(ExpDict["control-sink"].output)
+# inventory(ExpDict["control-sink"].input)
+# inventory(ExpDict["control-sink"].output)
 
 # plotting experiment structure unpackers and calculators
 unpack(v,e) = foldl(getfield, v; init=e)
@@ -126,106 +126,46 @@ dlnM = multop(f, [:output, :M], ExpDict["DIMsink"], ExpDict["control-sink"]);
 Experiment = TradeCuModel.Experiment # for dispatch
 
 "pcolormesh q::Matrix for experiment e"
-function plot_exp_var(e::Experiment, q::Matrix, ctx=ctx; ncolor=10, kwargs...)
+function plot_exp_var(e::Experiment, q::Matrix, ctx=ctx; ncolor=10, ax=nothing, kwargs...)
+    ax = isnothing(ax) ? gca() : ax
     ztop = e.output.ztop
     iz = findall(500.0 .<= ctx.z .<= 3500.0) # 10 m bins, z=500 m
     ik = findall(x-> !ismissing(x) && isfinite(x), ztop)
-    pcolormesh(ztop[ik]/1e3, ctx.z[iz]/1e3, q[iz,ik]; cmap=get_cmap("BuPu", ncolor), kwargs...)
-    colorbar()
-    plot(ztop[ik]/1e3, e.output.acld[ik], "w-", linewidth=0.5, label="cloud_i fraction")
-    ylim([0.5, 3.5]); xlim([0.5, 3.5])
-    xlabel("cloud top height (km)")
-    ylabel("z coordinate (km)")
-    gca().set_aspect("equal")
+    pcm = ax.pcolormesh(ztop[ik]/1e3, ctx.z[iz]/1e3, q[iz,ik]; cmap=get_cmap("BuPu", ncolor), kwargs...)
+    ax.get_figure().colorbar(pcm, ax=ax)
+    ax.plot(ztop[ik]/1e3, e.output.acld[ik], "w-", linewidth=0.5, label="cloud_i fraction")
+    ax.set_ylim([0.5, 3.5]); ax.set_xlim([0.5, 3.5])
+    ax.set_aspect("equal")
 end
 "pcolormesh an experiment output variable var"
-plot_exp_var(e::Experiment, var::Symbol, ctx=ctx; kwargs...) = plot_exp_var(e::Experiment, getfield(e.output, var), ctx; kwargs...)
-plot_exp_var(f, e::Experiment, var::Symbol, ctx=ctx; kwargs...) = plot_exp_var(e::Experiment, f.(getfield(e.output, var)), ctx; kwargs...)
+plot_exp_var(e::Experiment, var::Symbol, ctx=ctx; ax=nothing, kwargs...) = plot_exp_var(e::Experiment, getfield(e.output, var), ctx; ax=ax, kwargs...)
+plot_exp_var(f, e::Experiment, var::Symbol, ctx=ctx; ax=nothing, kwargs...) = plot_exp_var(e::Experiment, f.(getfield(e.output, var)), ctx; ax=ax, kwargs...)
 
-"plot cloud vertical velocity for an experiment"
-function plot_exp_w(e, ctx=ctx; kwargs...)
-    plot_exp_var(e, :w, ctx; kwargs...)
-    title("cloud vertical velocity (m/s)")
-end
-"plot cloud liquid for an experiment"
-function plot_exp_ql(e, ctx=ctx; kwargs...)
-    plot_exp_var(e, 1e3*calc_ql(e), ctx; kwargs...)
-    title("cloud liquid (g/kg)")
-end
-"plot total cloud water"
-function plot_exp_qc(e, ctx=ctx; kwargs...)
-    plot_exp_var(x->x.*1e3, e, :qc, ctx; kwargs...)
-    title("cloud liquid (g/kg)")
-end
-
-# plot cloud w
-clf(); fig = figure()
-fig.set_size_inches([10, 5])
-subplot(2,3,1)
-plot_exp_w(ExpDict["control"], ctx)
-plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title("control")
-gca().set_aspect("equal")
-subplot(2,3,2)
-plot_exp_w(ExpDict["subsidence-5%"], ctx)
-plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title("subsidence -5%")
-gca().set_aspect("equal")
-subplot(2,3,3)
-plot_exp_w(ExpDict["q&qs+7%"], ctx)
-plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title("q and qs +7%")
-gca().set_aspect("equal")
-suptitle("cloud vertical velocity (m/s)")
-tight_layout()
-# for f in ["png", "pdf", "svg"]
-#     savefig("experiment_cloud_vertical_velocity.$f")
-# end
-
-# plot cloud qc liquid
-# clf() 
-subplot(2,3,4)
-plot_exp_qc(ExpDict["control"], ctx)
-plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title("control")
-gca().set_aspect("equal")
-subplot(2,3,5)
-plot_exp_qc(ExpDict["subsidence-5%"], ctx)
-plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title("(same clouds) subsidence -5%")
-gca().set_aspect("equal")
-subplot(2,3,6)
-plot_exp_qc(ExpDict["q&qs+7%"], ctx)
-plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-title("q and qs +7%")
-gca().set_aspect("equal")
-suptitle("cloud vertical velocity (m/s), cloud liquid (g/kg)")
-tight_layout()
-# for f in ["png", "pdf", "svg"]
-#     savefig("experiment_cloud_liquid.$f")
-# end
 
 # plot cloud w
 expmts = ["control-sink", "DIMsink", "DIMsink-5%"]
-fig = figure(); fig.set_size_inches([10, 5])
+fig = gcf(); fig.set_size_inches([10, 5]); fig.clf()
+axs = fig.subplots(2, 3)
 for (i, exp) in enumerate(expmts)
-    subplot(2,3,i)
-    plot_exp_w(ExpDict[exp], ctx; vmax=1.0)
-    plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-    title(exp)
-    gca().set_aspect("equal")
+    ax = axs[0, i-1]
+    plot_exp_var(ExpDict[exp], :w, ctx; vmax=1.0, ax=ax)
+    ax.plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
+    ax.set_title(exp)
+    (i-1)%3 == 0 && ax.set_ylabel("in-cloud vertical velocity (m/s)\n\nz coordinate (km)", size=12)
+    ax.set_aspect("equal")
 end
-suptitle("cloud vertical velocity (m/s)")
 for (i, exp) in enumerate(expmts)
-    subplot(2,3,3+i)
-    plot_exp_ql(ExpDict[exp], ctx; vmin=0.0, vmax=2.0)
-    plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
-    title(exp)
-    gca().set_aspect("equal")
+    ax = axs[1, i-1]
+    plot_exp_var(ExpDict[exp], 1e3*calc_ql(ExpDict[exp]), ctx; vmin=0.0, vmax=2.0, ax=ax)
+    ax.plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
+    ax.set_title(exp)
+    (i-1)%3 == 0 && ax.set_ylabel("cloud liquid water (g/kg)\n\nz coordinate (km)", size=12)
+    ax.set_xlabel("cloud top height (km)")
+    ax.set_aspect("equal")
 end
-tight_layout()
+fig.tight_layout()
 for f in ["png", "pdf", "svg"]
-    savefig("experiment_cloud_vel_liquid.$f")
+    fig.savefig("experiment_cloud_vel_liquid.$f")
 end
 
 
