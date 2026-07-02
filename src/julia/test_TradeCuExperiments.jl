@@ -105,7 +105,11 @@ good(x) = !ismissing(x) && isfinite(x)
 function inventory(e)
     for f in fieldnames(typeof(e))
         v = getfield(e, f)
-        println("$(string(f)) has $(sum(good,v))")
+        if eltype(v) <: Union{Missing, T} where T <: Number
+            println("$(string(f)) has $(sum(good,v))")
+        else
+            println("$(string(f)) is nonnumeric.")
+        end
     end
 end
 inventory(ExpDict["control-sink"].input)
