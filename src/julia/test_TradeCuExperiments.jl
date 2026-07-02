@@ -69,7 +69,7 @@ DIMsink = define_experiment(;
     cth_bin= ztop,
     rfv_acc= acc,
     rfv_nrm= acld,
-    control=false, a_i=controlsink.output.acld ); # how to specify the cloud fraction?
+    control=false, a_i_control=controlsink.output.acld, M_i_control=controlsink.output.M );
 DIMsinkm5 = define_experiment(; 
     name="DIMsink-5%", description="DIM sink rate -5%",
     qm= (1 .- 0.95*(1 .- qm./qs)).*qs*1.07, qs=1.07*qs, zcb=zcb,
@@ -78,7 +78,7 @@ DIMsinkm5 = define_experiment(;
     cth_bin= ztop,
     rfv_acc= acc, 
     rfv_nrm= acld,
-    control=false, a_i=controlsink.output.acld ); # how to specify the cloud fraction?
+    control=false, a_i_control=controlsink.output.acld, M_i_control=controlsink.output.M );
 DIMsinkp5 = define_experiment(;
     name="DIMsink+5%", description="DIM sink rate +5%",
     qm= (1 .- 0.95*(1 .- qm./qs)).*qs*1.07, qs=1.07*qs, zcb=zcb,
@@ -87,7 +87,7 @@ DIMsinkp5 = define_experiment(;
     cth_bin= ztop,
     rfv_acc= acc, 
     rfv_nrm= acld,
-    control=false, a_i=controlsink.output.acld );
+    control=false, a_i_control=controlsink.output.acld, M_i_control=controlsink.output.M );
 # integrate
 for exp in [DIMsink, DIMsinkm5, DIMsinkp5]
     println(exp.name)
@@ -97,15 +97,26 @@ end
 
 # recompute the cloud fraction for the DIM experiments, assuming
 # w_i is invariant from the control experiment, stretching w profile from old ztop to new ztop.
-a_i = new_area( ExpDict["DIMsink"], ExpDict["control-sink"], ctx )
+# a_i = new_area( ExpDict["DIMsink"], ExpDict["control-sink"], ctx )
 # possibly only cloud BASE mass flux is a good indicator of cloud fraction.
+
+# quick count of valid output fields
+good(x) = !ismissing(x) && isfinite(x)
+function inventory(e)
+    for f in fieldnames(typeof(e))
+        v = getfield(e, f)
+        println("$(string(f)) has $(sum(good,v))")
+    end
+end
+inventory(ExpDict["control-sink"].input)
+inventory(ExpDict["control-sink"].output)
 
 # plotting experiment structure unpackers and calculators
 unpack(v,e) = foldl(getfield, v; init=e)
 multop(f, v, T...) = f.(broadcast(x->unpack(v,x), T)...)
 # computes dlnM output between experiments e-c
 f(x,y) = log(x/y)
-dlnM = multop(f, [:output, :M], ExpDict["DIMsink"], ExpDict["control-sink"]) 
+dlnM = multop(f, [:output, :M], ExpDict["DIMsink"], ExpDict["control-sink"]);
 
 # plotting functions for experiment output
 Experiment = TradeCuModel.Experiment # for dispatch
@@ -192,7 +203,7 @@ tight_layout()
 
 # plot cloud w
 expmts = ["control-sink", "DIMsink", "DIMsink-5%"]
-clf(); fig = figure(); fig.set_size_inches([10, 5])
+fig = figure(); fig.set_size_inches([10, 5])
 for (i, exp) in enumerate(expmts)
     subplot(2,3,i)
     plot_exp_w(ExpDict[exp], ctx; vmax=1.0)
@@ -209,9 +220,9 @@ for (i, exp) in enumerate(expmts)
     gca().set_aspect("equal")
 end
 tight_layout()
-# for f in ["png", "pdf", "svg"]
-#     savefig("experiment_cloud_liquid.$f")
-# end
+for f in ["png", "pdf", "svg"]
+    savefig("experiment_cloud_vel_liquid.$f")
+end
 
 
 

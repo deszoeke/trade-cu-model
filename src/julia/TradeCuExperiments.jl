@@ -40,6 +40,7 @@ using VaporSat # dev ../../deps/VaporSat
 export ExpDict # dictionary contains defined experiments
 export init_context, define_experiments, define_experiment
 export interp_sinkrate #, get_sinkrate
+export integrate_experiment!
 # temporarily export more to experiment in outside environment
 export setup_experiments
 export cloud_i_area
@@ -127,9 +128,9 @@ allocate_output(nz,ns) = ModelOutput(
     Matrix{Union{Missing, Float64}}(missing, nz,ns) )
 
 function define_experiment(; name, description, 
-    qm, qs, zcb, qcb, E_cb, x, divg, tot_sink, cth_bin, rfv_acc, rfv_nrm, control=true, a_i=nothing)
+    qm, qs, zcb, qcb, E_cb, x, divg, tot_sink, cth_bin, rfv_acc, rfv_nrm, control=true, a_i_control=nothing, M_i_control=nothing)
     Experiment( name, description,
-        ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, tot_sink, cth_bin, rfv_acc, rfv_nrm, control, a_i),
+        ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, tot_sink, cth_bin, rfv_acc, rfv_nrm, control, a_i_control, M_i_control),
         allocate_output(length(qm),length(tot_sink)) )
 end
 
@@ -142,41 +143,43 @@ function define_experiments(; ctx::ModelContext)
     # initialize experiment input and output structures
     control = define_experiment(; name="control", description="Control",
         qm=qm, qs=qs, zcb=zcb, qcb=qcb, E_cb=E_cb, x=x, divg=divg, tot_sink=tot_sink, 
-        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=true, a_i=nothing )
+        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=true, a_i_control=nothing, M_i_control=nothing )
     integrate_experiment!(control, ctx=ctx) # integrate control to get a_i for other experiments
-    a_i = control.output.acld # cloud area fraction for each cloud top height bin
+    # control parameters to propagate to experiment inputs
+    a_i_control = control.output.acld # cloud area fraction for each cloud top height bin
+    M_i_control = control.output.M # mass flux for each cloud top height bin
 
     # need to integrate control reference to get a_i for other experiments
     subsminus5pct = define_experiment(
         name="subsidence-5%", description="LS subsidence-5%",
         qm=qm, qs=qs, zcb=zcb, qcb=qcb, E_cb=E_cb, x=x, divg=divg*0.95, tot_sink=tot_sink, 
-        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=false, a_i=a_i )
+        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=false, a_i_control=a_i_control, M_i_control=M_i_control )
     
     qsplus7pct = define_experiment(
         name="qs+7%", description="qs+7%, LS subsidence-5%, LOW RH!",
         qm=qm, qs=qs*1.07, zcb=zcb, qcb=qcb*1.07, E_cb=E_cb, x=x, divg=divg*0.95, tot_sink=tot_sink, 
-        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=false, a_i=a_i )
+        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=false, a_i_control=a_i_control, M_i_control=M_i_control )
 
     qplus7pct = define_experiment(
         name="q&qs+7%", description="q and qs +7%, subsidence-5%, RH=control",
         qm=qm*1.07, qs=qs*1.07, zcb=zcb, qcb=qcb*1.07, E_cb=E_cb, x=x, divg=divg*0.95, tot_sink=tot_sink, 
-        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=false, a_i=a_i )
+        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=false, a_i_control=a_i_control, M_i_control=M_i_control )
 
     ecbplus2pct = define_experiment(
         name="Ecb+2%", description="E_cb + 2%, q&qs+7%, subsidence-5%",
         qm=qm*1.07, qs=qs*1.07, zcb=zcb, qcb=qcb*1.07, E_cb=E_cb*1.02, x=x, divg=divg*0.95, tot_sink=tot_sink, 
-        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=false, a_i=a_i )
+        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=false, a_i_control=a_i_control, M_i_control=M_i_control )
 
     qm_new = @. (1 - 0.95*(1-qm/qs)) * qs * 1.07
     cRHminus5pct = define_experiment(
         name="(1-RH)-5%", description="subcloud (1-RH)-5%, E_cb+2%, q&qs+7%, subsidence-5%",
         qm=qm_new, qs=qs*1.07, zcb=zcb, qcb=qcb*1.07, E_cb=E_cb*1.02, x=x, divg=divg*0.95, tot_sink=tot_sink, 
-        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=false, a_i=a_i )
+        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=false, a_i_control=a_i_control, M_i_control=M_i_control )
 
     DIM = define_experiment(
         name="DIM", description="Descent Inhibited Moisture Flux; a_i-5%, (1-RH)-5%, E_cb+2%, q&qs+7%, subsidence-5%",
         qm=qm_new, qs=qs*1.07, zcb=zcb, qcb=qcb*1.07, E_cb=E_cb*1.02, x=x, divg=divg*0.95, tot_sink=tot_sink, 
-        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=false, a_i=a_i )
+        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=false, a_i_control=a_i_control, M_i_control=M_i_control )
 
     # experiment dictionary for looping, and defining short names
     ExpDict = Dict(
@@ -193,14 +196,14 @@ end
 # should just use define_experiment to define a sink experiment
 function define_control_sink_experiment(; ctx::ModelContext, sinkz=sinkz, 
     name="control-sink", description="control sink rate experiment",
-    control=true, a_i=nothing)
+    control=true, a_i_control=nothing, M_i_control=nothing)
     ( qm, qs, zcb, qcb, E_cb, x, divg, 
         tot_sink, cth_bin, rfv_acc, rfv_nrm, 
         rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx)
 
     return Experiment( name, description,
             ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, sinkz, cth_bin, rfv_acc, rfv_nrm,
-            control, a_i),
+            control, a_i_control, M_i_control),
             allocate_output(nz, length(sinkz)) )
 end
 
@@ -444,15 +447,16 @@ function test_control_sink()
     # a_i = cloud_i_area( ctx )
     controlsink = define_control_sink_experiment(ctx=ctx, sinkz=sinkz,
         name="control-sink", description="control sink rate experiment",
-        control=true, a_i=nothing)
-    a_i = controlsink.output.acld # sized for 331 sink rate bins
-
+        control=true, a_i_control=nothing, M_i_control=nothing)
+    a_i_control = controlsink.output.acld # sized for 331 sink rate bins
+    M_i_control = controlsink.output.M
+    
     sinkm5 = define_control_sink_experiment(ctx=ctx, sinkz=0.95*sinkz,
         name="control-sink-5%", description="control sink rate experiment -5%",
-        control=false, a_i=a_i)
+        control=false, a_i_control=a_i_control, M_i_control=M_i_control)
     sinkp5 = define_control_sink_experiment(ctx=ctx, sinkz=1.05*sinkz,
         name="control-sink+5%", description="control sink rate experiment +5%",
-        control=false, a_i=a_i)
+        control=false, a_i_control=a_i_control, M_i_control=M_i_control)
     integrate_experiment!(controlsink, ctx=ctx)
     integrate_experiment!(sinkm5,      ctx=ctx)
     integrate_experiment!(sinkp5,      ctx=ctx)

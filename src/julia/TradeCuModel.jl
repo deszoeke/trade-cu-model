@@ -309,7 +309,8 @@ struct ModelInput
     cth_acc::Vector # accumulated cloud fraction below cth_bin
     cth_nrm::Vector # cloud fraction within cth_bin
     control::Bool
-    a_i::Union{Vector, Nothing}
+    a_i_control::Union{Vector, Nothing}
+    M_i_control::Union{Matrix, Nothing}
 end
 
 # Define the Outputs Container
@@ -648,8 +649,12 @@ function interp_sinkrate( e::Experiment; ctx::ModelContext )
     ii = .!ismissing.(ztop) # filter missing, let NaN thru
     # println("size(ii) = $(size(ii))")
     # evaluate the interpolator; sinkz decreases with z
-    sinkz = interpolate_ascending(coalesce.(ztop[ii], NaN), coalesce.(tot_sink[ii], NaN)).(z)
-    sinkz[sinkz .< 0.7*minimum(tot_sink)] .= NaN # retain a little extrapolation
+    if any(ii)
+        sinkz = interpolate_ascending(coalesce.(ztop[ii], NaN), coalesce.(tot_sink[ii], NaN)).(z)
+        sinkz[sinkz .< 0.7*minimum(tot_sink)] .= NaN # retain a little extrapolation
+    else
+        sinkz = fill(NaN, length(z))
+    end
     return sinkz
 end
 # implementation: search above iz = 74 (730 m)
@@ -852,7 +857,7 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     z = ctx.z
     dz = ctx.dz
 
-   ztop, Gcld, Gp, qtc, M = cloudflux_allsky(exp.input.tot_sink; 
+   ztop, Gcld, Gp, qc, M = cloudflux_allsky(exp.input.tot_sink; 
         x=exp.input.x, z=z, nz=length(z), dz=z[2]-z[1],
         qm=exp.input.qm, qs=exp.input.qs,
         divg=exp.input.divg, E_cb=exp.input.E_cb,
@@ -871,12 +876,14 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
         cth_acc = exp.input.cth_acc
         a_i = interp_a_i(ztop, cth_bin, cth_acc; zcb=zcb)
     else
+        # cloud fraction is supplied via exp.input.a_i (e.g., controlsink.output.acld)
+        isnothing(exp.input.a_i_control) && error("$(exp.name): non-control experiment requires a_i_control in ModelInput")
         # use a ∝ M to get clouds; assume for every cloud category
         icb = findfirst(z.>=zcb) # use cloud base mass flux ratio
-        a_i_old = exp.output.acld  # specified from relevant control
-        M_i_old = exp.output.M[icb,:]
-        fac = M[icb,:] ./ M_i_old
-        a_i = fac .* a_i_old # Matrix new cloud area fraction scaled up for new experiment
+        a_i_control = exp.input.a_i_control
+        M_i_control = exp.input.M_i_control[icb,:]
+        fac = M[icb,:] ./ M_i_control
+        a_i = fac .* a_i_control # Matrix new cloud area fraction scaled up for new experiment
     end
     println("size(Gcld) = $(size(Gcld)), size(a_i) = $(size(a_i))")
     Fcld = Gcld ./ a_i'
@@ -891,7 +898,6 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     da_ind = eachindex(exp.input.tot_sink)
     # do not use acld for experiments; compute this order:  (F_cld, dq) -> w -> M -> a_i 
 
-    qc = exp.output.qc
     dq = qc .- exp.input.qm
     # Fcld is in-cloud moisture flux [z, sink rate]; Fcld = w * dq; M = w * a; Gcld = M * dq
     # w = M ./ a_i
