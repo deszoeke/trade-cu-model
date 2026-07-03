@@ -304,6 +304,7 @@ struct ModelInput
     E_cb::Number
     x::Number
     divg::Number
+    sfc_adv::Number
     tot_sink::Vector
     cth_bin::Vector
     cth_acc::Vector # accumulated cloud fraction below cth_bin
@@ -471,14 +472,9 @@ and partition G_i to cloud-top categories i.
 function calc_G_allsky(ztop; z,
     E_cb, # W/m^2; just the cloud vapor flux
     rhb_prate=8.88e-6, # kg/s
-    divg,
-    qm,
-    rhoL,
-    zi=4000.0,
-    zcb=700.0 )
-
-    # align cth data; cth_bin starts at z=500 m
-    # offset = findfirst(z .>= cth_bin[1]-1.0) - 1
+    divg, sfc_adv=1.7e-8,
+    qm, rhoL,
+    zi=4000.0, zcb=700.0 )
 
     # all-sky total flux at cloud base
     G_cb = E_cb/rhoL - rhb_prate
@@ -500,11 +496,12 @@ function calc_G_allsky(ztop; z,
     "interpolate the derivative dq/dz at z_"
     ddz(z_, q=qm,z=z) = interpolate_ascending( z[1:end-1].+0.5*diff(z), diff(q) ./ diff(z) )(z_)
     "analytic large-scale drying profile S_ls(z) = -w*dq/dz - 1.7e-8*(zdivg-z)/zdivg"
-    function largescale_drying(q, z_)
+    function largescale_drying(q, z_; divg=divg, sfc_adv=sfc_adv)
         zdivg = 4e3 # m; hardwired
-        wdqdz = subsidence(z_) .* ddz(z_)
-        -wdqdz - 1.7e-8 * max(0, (zdivg - z_) ./ zdivg) # tapers to surface
+        wdqdz = subsidence(z_; divg=divg, zi=zdivg) .* ddz(z_, q)
+        -wdqdz - sfc_adv * max(0, (zdivg - z_) ./ zdivg) # advection increases to sfc_adv at surface
     end
+
 
     # Total all-sky flux G with cloud-base boundary condition
     nztop = length(ztop)
@@ -513,7 +510,8 @@ function calc_G_allsky(ztop; z,
 
     ii = findall(valid)
     iis = ii[sortperm(zt[ii])]
-    S_ls_dz(z0,z1) = ( largescale_drying(qm, z0) + largescale_drying(qm, z1) ) * 0.5 * (z1-z0)
+    S_ls_dz(z0,z1) = ( largescale_drying(qm, z0, divg=divg, sfc_adv=sfc_adv) + 
+                       largescale_drying(qm, z1, divg=divg, sfc_adv=sfc_adv) ) * 0.5 * (z1-z0)
     # G_i is eddy flux converging between z_i - z_i-1
     # G_i(zcb) = 0.0 # at cloud base
     dG = similarmissing((length(iis),), Float64)
@@ -799,7 +797,7 @@ end
 "partition the all-sky flux G_tot to cloud-top categories i using the cloud top height ztop from the cloud model."
 function cloudflux_allsky(tot_sink=tot_sink; x=x, 
     z, nz=length(z), dz=z[2]-z[1],
-    qm=qm, qs=qs, divg, E_cb, rhoL,
+    qm=qm, qs=qs, divg, sfc_adv, E_cb, rhoL,
     zi=4000.0, zcb=z[icb], icb=icb, qcb=qcb)
 
     # compute clouds
@@ -811,7 +809,7 @@ function cloudflux_allsky(tot_sink=tot_sink; x=x,
     # otherwise use a_i passed directly (control=false experiments)
 
     # compute all sky flux at cloud top heights for control simulation
-    G_i, G_tot = calc_G_allsky(ztop; z=z, E_cb=E_cb, divg=divg,
+    G_i, G_tot = calc_G_allsky(ztop; z=z, E_cb=E_cb, divg=divg, sfc_adv=sfc_adv,
         qm=qm, rhoL=rhoL, zi=zi, zcb=zcb)
 
     # CHANGE order of opertations
@@ -860,8 +858,8 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
    ztop, Gcld, Gp, qc, M = cloudflux_allsky(exp.input.tot_sink; 
         x=exp.input.x, z=z, nz=length(z), dz=z[2]-z[1],
         qm=exp.input.qm, qs=exp.input.qs,
-        divg=exp.input.divg, E_cb=exp.input.E_cb,
-        rhoL=ctx.rhoL,
+        divg=exp.input.divg, sfc_adv=exp.input.sfc_adv,
+        E_cb=exp.input.E_cb, rhoL=ctx.rhoL,
         zi=ctx.zi, zcb=exp.input.zcb,
         icb=findfirst(z.>=exp.input.zcb), qcb=exp.input.qcb) 
 

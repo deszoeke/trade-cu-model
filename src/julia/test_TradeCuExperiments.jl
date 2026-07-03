@@ -38,7 +38,7 @@ interp_cloudtop_height = TradeCuModel.interp_cloudtop_height # needed for plotti
 ctx, ExpDict, controlsink, sinkm5, sinkp5 = test_control_sink();
 
 # load standard parameters
-( qm, qs, zcb, qcb, E_cb, x, divg, 
+( qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv,
     tot_sink, cth_bin, rfv_acc, rfv_nrm, 
     rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx);
 # Get matched total sink rate and cloud top ensemble from control experiment
@@ -55,39 +55,53 @@ end
 ztop, sinkz, acc, acld = good_sinks(controlsink);
 
 # DIM experiments with different sink rates, to simulate mesoscale organization changes
-DIMsink = define_experiment(; 
-    name="DIMsink",
-    description="DIM sink rate, cloud tops align with z grid",
-    qm= (1 .- 0.95*(1 .- qm./qs)).*qs*1.07,
-    qs=1.07*qs,
-    zcb=zcb,
-    qcb=1.07*qcb,
+DIMsink = define_experiment(controlsink; 
+    name="DIMsink", description="DIM sink rate, cloud tops align with z grid",
+    qm=(1 .- 0.95*(1 .- qm./qs)).*qs*1.07, qs=1.07*qs, qcb=1.07*qcb,
     E_cb=1.02*E_cb,
-    x=x,
-    divg=0.95*divg,
-    tot_sink=sinkz, # sinkz decreases with index
-    cth_bin= ztop,
-    rfv_acc= acc,
-    rfv_nrm= acld,
+    divg=0.95*divg, sfc_adv=0.95*sfc_adv,
+    tot_sink=sinkz,               # sinkz decreases with index
+    cth_bin= ztop, rfv_nrm= acld, # probably ignored
     control=false, a_i_control=controlsink.output.acld, M_i_control=controlsink.output.M );
-DIMsinkm5 = define_experiment(; 
-    name="DIMsink-5%", description="DIM sink rate -5%",
-    qm= (1 .- 0.95*(1 .- qm./qs)).*qs*1.07, qs=1.07*qs, zcb=zcb,
-    qcb=1.07*qcb, E_cb=1.02*E_cb, x=x, divg=0.95*divg,
-    tot_sink=sinkz*0.95, # sinkz decreases with index
-    cth_bin= ztop,
-    rfv_acc= acc, 
-    rfv_nrm= acld,
-    control=false, a_i_control=controlsink.output.acld, M_i_control=controlsink.output.M );
-DIMsinkp5 = define_experiment(;
-    name="DIMsink+5%", description="DIM sink rate +5%",
-    qm= (1 .- 0.95*(1 .- qm./qs)).*qs*1.07, qs=1.07*qs, zcb=zcb,
-    qcb=1.07*qcb, E_cb=1.02*E_cb, x=x, divg=0.95*divg,
-    tot_sink=sinkz*1.05, # sinkz decreases with index
-    cth_bin= ztop,
-    rfv_acc= acc, 
-    rfv_nrm= acld,
-    control=false, a_i_control=controlsink.output.acld, M_i_control=controlsink.output.M );
+DIMsinkm5 = define_experiment(DIMsink; name="DIMsink-5%", description="DIM sink rate -5%",
+    tot_sink=sinkz*0.95 );
+DIMsinkp5 = define_experiment(DIMsink; name="DIMsink+5%", description="DIM sink rate +5%",
+    tot_sink=sinkz*1.05 );
+
+# DIMsink = define_experiment(control-sink; 
+#     name="DIMsink",
+#     description="DIM sink rate, cloud tops align with z grid",
+#     qm= (1 .- 0.95*(1 .- qm./qs)).*qs*1.07,
+#     qs=1.07*qs,
+#     zcb=zcb,
+#     qcb=1.07*qcb,
+#     E_cb=1.02*E_cb,
+#     x=x,
+#     divg=0.95*divg,
+#     tot_sink=sinkz, # sinkz decreases with index
+#     cth_bin= ztop,
+#     rfv_acc= acc,
+#     rfv_nrm= acld,
+#     control=false, a_i_control=controlsink.output.acld, M_i_control=controlsink.output.M );
+# DIMsinkm5 = define_experiment(; 
+#     name="DIMsink-5%", description="DIM sink rate -5%",
+#     qm= (1 .- 0.95*(1 .- qm./qs)).*qs*1.07, qs=1.07*qs, zcb=zcb,
+#     qcb=1.07*qcb, E_cb=1.02*E_cb, x=x, divg=0.95*divg,
+#     tot_sink=sinkz*0.95, # sinkz decreases with index
+#     cth_bin= ztop,
+#     rfv_acc= acc, 
+#     rfv_nrm= acld,
+#     control=false, a_i_control=controlsink.output.acld, M_i_control=controlsink.output.M );
+# DIMsinkp5 = define_experiment(;
+#     name="DIMsink+5%", description="DIM sink rate +5%",
+#     qm= (1 .- 0.95*(1 .- qm./qs)).*qs*1.07, qs=1.07*qs, zcb=zcb,
+#     qcb=1.07*qcb, E_cb=1.02*E_cb, x=x, divg=0.95*divg,
+#     tot_sink=sinkz*1.05, # sinkz decreases with index
+#     cth_bin= ztop,
+#     rfv_acc= acc, 
+#     rfv_nrm= acld,
+#     control=false, a_i_control=controlsink.output.acld, M_i_control=controlsink.output.M );
+
 # integrate
 for exp in [DIMsink, DIMsinkm5, DIMsinkp5]
     println(exp.name)
@@ -134,27 +148,27 @@ function dlna_limit_ztop(e,c) # do not go above the highest control cloud top he
 end
 
 # E1 experiments
-dlna(ExpDict["subsidence-5%"], ExpDict["control"])   #    -3.0%
-dlna(ExpDict["q&qs+7%"], ExpDict["control"])         #    -5.8%
-dlna(ExpDict["Ecb+2%"], ExpDict["control"])          #  = -5.8% makes no difference
-dlna(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    +3.7% # HUGE SENSITIVITY to this!
-dlna(ExpDict["DIM"], ExpDict["control"])             #  = +3.7%
+dlna(ExpDict["subsidence-5%"], ExpDict["control"])   #    -5.1%
+dlna(ExpDict["q&qs+7%"], ExpDict["control"])         #    -7.9%
+dlna(ExpDict["Ecb+2%"], ExpDict["control"])          #  = -7.9% makes no difference
+dlna(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    +1.6% # HUGE SENSITIVITY to this!
+dlna(ExpDict["DIM"], ExpDict["control"])             #  = +1.6%
 
-dlna_limit_index(ExpDict["subsidence-5%"], ExpDict["control"])   #    -3.0%
-dlna_limit_index(ExpDict["q&qs+7%"], ExpDict["control"])         #    -5.8%
-dlna_limit_index(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    +3.7% # HUGE SENSITIVITY to this!
+dlna_limit_index(ExpDict["subsidence-5%"], ExpDict["control"])   #    -5.1%
+dlna_limit_index(ExpDict["q&qs+7%"], ExpDict["control"])         #    -7.9%
+dlna_limit_index(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    +1.6% # HUGE SENSITIVITY to this!
 
-dlna_limit_ztop(ExpDict["subsidence-5%"], ExpDict["control"])   #    -3.0%
-dlna_limit_ztop(ExpDict["q&qs+7%"], ExpDict["control"])         #    -6.8%
-dlna_limit_ztop(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    -0.73% # sensitive to extra clouds at top!
+dlna_limit_ztop(ExpDict["subsidence-5%"], ExpDict["control"])   #    -5.1%
+dlna_limit_ztop(ExpDict["q&qs+7%"], ExpDict["control"])         #    -8.9%
+dlna_limit_ztop(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    -2.8% # sensitive to extra clouds at top!
 
 # Inverse dependence of mass flux on Δq, M = G/(Δq) is key,
 # so that increasing Δq decreases M = a*w and thus cloud fraction.
 
 # E2 sink rate experiments
-dlna(ExpDict["DIMsink"], ExpDict["control-sink"])    #    +4.5%
-dlna(ExpDict["DIMsink-5%"], ExpDict["control-sink"]) #    +6.2%
-dlna(ExpDict["DIMsink+5%"], ExpDict["control-sink"]) #    -2.4%
+dlna(ExpDict["DIMsink"], ExpDict["control-sink"])    #    +2.4%
+dlna(ExpDict["DIMsink-5%"], ExpDict["control-sink"]) #    +4.2%
+dlna(ExpDict["DIMsink+5%"], ExpDict["control-sink"]) #    -4.4%
 
 # make fonts bigger by mutating rcParams
 font_settings = Dict(
@@ -228,17 +242,17 @@ c = ExpDict["control"]
 fig = gcf(); # fig.set_size_inches([5, 5]); 
 fig.clf()
 ax = fig.subplots(1, 1)
-qx = (100*log.(max.(0, dq_cld(e)./dq_cld(c)))) # % change in Δq relative to control
-qx[ctx.z .< ctx.zcb, :] .= NaN
+qx = (100*log.(max.(0, dq_cld(e)./dq_cld(c)))); # % change in Δq relative to control
+qx[ctx.z .< ctx.zcb, :] .= NaN;
 for (i, zt) in enumerate(e.output.ztop); qx[ctx.z.>=zt.+10.0, i] .= NaN; end
-qx[qx.<1.0] .= NaN; qx[qx.>4.25] .= NaN
+qx[qx.<1.0] .= NaN; qx[qx.>4.25] .= NaN;
 plot_exp_var(e, qx, ctx; ax=ax, cmap=get_cmap("BuPu", 13), vmin=1.0, vmax=4.25)
 ax.plot([0.7, 3.5], [0.7, 3.5], "k-", linewidth=0.5)
 ax.plot([0.7, 3.5], [0.7, 0.7], "k-", linewidth=0.5)
 ax.set_title("\$d\$ln\$(q_c-q)\$ [%] for $(exp) - control")
 ax.set_ylabel("z coordinate (km)")
 ax.set_xlabel("cloud top height (km)")
-tight_layout()
+fig.tight_layout()
 [ fig.savefig("experiment_dq.$f") for f in ["png", "pdf", "svg"] ];
 
 # plot cloud w
@@ -259,9 +273,7 @@ for (i, exp) in enumerate(expmts)
     ax.set_xlabel("cloud top height (km)")
 end
 fig.tight_layout()
-for f in ["png", "pdf", "svg"]
-    fig.savefig("experiment_cloud_vel_liquid.$f")
-end
+[ fig.savefig("experiment_cloud_vel_liquid.$f") for f in ["png", "pdf", "svg"] ]
 
 
 """
