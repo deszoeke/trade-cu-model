@@ -219,23 +219,27 @@ end
 plot_exp_var(e::Experiment, var::Symbol, ctx=ctx; ax=nothing, kwargs...) = plot_exp_var(e::Experiment, getfield(e.output, var), ctx; ax=ax, kwargs...)
 plot_exp_var(f, e::Experiment, var::Symbol, ctx=ctx; ax=nothing, kwargs...) = plot_exp_var(e::Experiment, f.(getfield(e.output, var)), ctx; ax=ax, kwargs...)
 
-# plot Δq = qc-qm
+# plot Δq = qc-qm for (1-RH)-5% experiment
 dq_cld(e) = e.output.qc .- e.input.qm
-expmts = ["control", "subsidence-5%", "q&qs+7%", "(1-RH)-5%"] # the last is equivalent to DIM
-fig = gcf(); fig.set_size_inches([5, 10]); fig.clf()
-axs = fig.subplots(2, 1)
+# expmts = ["control", "subsidence-5%", "q&qs+7%", "(1-RH)-5%"]
+exp = "(1-RH)-5%" # equivalent to DIM
+e = ExpDict[exp]
 c = ExpDict["control"]
-for (i, exp) in enumerate(expmts[3:4])
-    ax = axs[i-1]
-    e = ExpDict[exp]
-    qx = (ctx.z .- e.output.ztop' .< 0) .* (100*log.(max.(0, dq_cld(e)./dq_cld(c)))) # % change in Δq relative to control
-    plot_exp_var(e, qx, ctx; ax=ax, cmap=get_cmap("BuPu", 18), vmin=0, vmax=9)
-    ax.plot([0.7, 3.5], [0.7, 3.5], "k-", linewidth=0.5)
-    ax.plot([0.7, 3.5], [0.7, 0.7], "k-", linewidth=0.5)
-    ax.set_title(exp)
-    (i-1)%3 == 0 && ax.set_ylabel("Δq (m/s)\n\nz coordinate (km)", size=12)
-end
+fig = gcf(); # fig.set_size_inches([5, 5]); 
+fig.clf()
+ax = fig.subplots(1, 1)
+qx = (100*log.(max.(0, dq_cld(e)./dq_cld(c)))) # % change in Δq relative to control
+qx[ctx.z .< ctx.zcb, :] .= NaN
+for (i, zt) in enumerate(e.output.ztop); qx[ctx.z.>=zt.+10.0, i] .= NaN; end
+qx[qx.<1.0] .= NaN; qx[qx.>4.25] .= NaN
+plot_exp_var(e, qx, ctx; ax=ax, cmap=get_cmap("BuPu", 13), vmin=1.0, vmax=4.25)
+ax.plot([0.7, 3.5], [0.7, 3.5], "k-", linewidth=0.5)
+ax.plot([0.7, 3.5], [0.7, 0.7], "k-", linewidth=0.5)
+ax.set_title("\$d\$ln\$(q_c-q)\$, $(exp) - control")
+ax.set_ylabel("z coordinate (km)")
+ax.set_xlabel("cloud top height (km)")
 tight_layout()
+[ fig.savefig("experiment_dq.$f") for f in ["png", "pdf", "svg"] ];
 
 # plot cloud w
 expmts = ["control-sink", "DIMsink", "DIMsink-5%"]
