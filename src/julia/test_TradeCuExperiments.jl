@@ -235,7 +235,7 @@ qx[qx.<1.0] .= NaN; qx[qx.>4.25] .= NaN
 plot_exp_var(e, qx, ctx; ax=ax, cmap=get_cmap("BuPu", 13), vmin=1.0, vmax=4.25)
 ax.plot([0.7, 3.5], [0.7, 3.5], "k-", linewidth=0.5)
 ax.plot([0.7, 3.5], [0.7, 0.7], "k-", linewidth=0.5)
-ax.set_title("\$d\$ln\$(q_c-q)\$, $(exp) - control")
+ax.set_title("\$d\$ln\$(q_c-q)\$ [%] for $(exp) - control")
 ax.set_ylabel("z coordinate (km)")
 ax.set_xlabel("cloud top height (km)")
 tight_layout()
