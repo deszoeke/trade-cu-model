@@ -147,6 +147,18 @@ function dlna_limit_ztop(e,c) # do not go above the highest control cloud top he
     log(sum(e.output.acld[ij])/sum(c.output.acld[ik]))
 end
 
+# doesn't work:
+function dlna_itp_ztop(e,c)
+    ik = findall(x-> !ismissing(x) && isfinite(x), c.output.ztop)
+    mz = maximum(c.output.ztop[ik])
+    ca = sum(c.output.acld[ik])
+    ij = findall(x-> !ismissing(x) && isfinite(x), e.output.ztop)
+    ea = TradeCuModel.interpolate_ascending(
+        coalesce.(e.output.ztop[ij],NaN), 
+        cumsum(coalesce.(e.output.acld[ij],NaN)) )(mz)
+    log(ea/ca)
+end
+
 # E1 experiments
 dlna(ExpDict["subsidence-5%"], ExpDict["control"])   #    -5.1%
 dlna(ExpDict["q&qs+7%"], ExpDict["control"])         #    -7.9%
@@ -157,6 +169,10 @@ dlna(ExpDict["DIM"], ExpDict["control"])             #  = +1.6%
 dlna_limit_index(ExpDict["subsidence-5%"], ExpDict["control"])   #    -5.1%
 dlna_limit_index(ExpDict["q&qs+7%"], ExpDict["control"])         #    -7.9%
 dlna_limit_index(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    +1.6% # HUGE SENSITIVITY to this!
+
+dlna_itp_ztop(ExpDict["subsidence-5%"], ExpDict["control"])   #    -5.1%
+dlna_itp_ztop(ExpDict["q&qs+7%"], ExpDict["control"])         #    -8.9%
+dlna_itp_ztop(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    -2.8% # sensitive to extra clouds at top!
 
 dlna_limit_ztop(ExpDict["subsidence-5%"], ExpDict["control"])   #    -5.1%
 dlna_limit_ztop(ExpDict["q&qs+7%"], ExpDict["control"])         #    -8.9%
@@ -189,7 +205,7 @@ function plot_cld_tot_profs(expmts)
         ztop = ExpDict[exp].output.ztop
         ik = findall(x-> !ismissing(x) && isfinite(x), ztop)
         ac = cumsum(ExpDict[exp].output.acld[ik])
-        ax.plot(ac*1e2, ztop[ik]/1e3, linewidth=0.5, label="$(exp), a=$(round(maximum(ac*100), digits=1))%")
+        ax.plot(ac*1e2, ztop[ik]/1e3, linewidth=0.5, marker=".", label="$(exp), a=$(round(maximum(ac*100), digits=1))%")
     end
     ax.set_xlabel("cumulative cloud fraction (%)")
     ax.set_ylabel("cloud top height (km)")
