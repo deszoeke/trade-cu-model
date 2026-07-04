@@ -68,40 +68,6 @@ DIMsinkm5 = define_experiment(DIMsink; name="DIMsink-5%", description="DIM sink 
 DIMsinkp5 = define_experiment(DIMsink; name="DIMsink+5%", description="DIM sink rate +5%",
     tot_sink=sinkz*1.05 );
 
-# DIMsink = define_experiment(control-sink; 
-#     name="DIMsink",
-#     description="DIM sink rate, cloud tops align with z grid",
-#     qm= (1 .- 0.95*(1 .- qm./qs)).*qs*1.07,
-#     qs=1.07*qs,
-#     zcb=zcb,
-#     qcb=1.07*qcb,
-#     E_cb=1.02*E_cb,
-#     x=x,
-#     divg=0.95*divg,
-#     tot_sink=sinkz, # sinkz decreases with index
-#     cth_bin= ztop,
-#     rfv_acc= acc,
-#     rfv_nrm= acld,
-#     control=false, a_i_control=controlsink.output.acld, M_i_control=controlsink.output.M );
-# DIMsinkm5 = define_experiment(; 
-#     name="DIMsink-5%", description="DIM sink rate -5%",
-#     qm= (1 .- 0.95*(1 .- qm./qs)).*qs*1.07, qs=1.07*qs, zcb=zcb,
-#     qcb=1.07*qcb, E_cb=1.02*E_cb, x=x, divg=0.95*divg,
-#     tot_sink=sinkz*0.95, # sinkz decreases with index
-#     cth_bin= ztop,
-#     rfv_acc= acc, 
-#     rfv_nrm= acld,
-#     control=false, a_i_control=controlsink.output.acld, M_i_control=controlsink.output.M );
-# DIMsinkp5 = define_experiment(;
-#     name="DIMsink+5%", description="DIM sink rate +5%",
-#     qm= (1 .- 0.95*(1 .- qm./qs)).*qs*1.07, qs=1.07*qs, zcb=zcb,
-#     qcb=1.07*qcb, E_cb=1.02*E_cb, x=x, divg=0.95*divg,
-#     tot_sink=sinkz*1.05, # sinkz decreases with index
-#     cth_bin= ztop,
-#     rfv_acc= acc, 
-#     rfv_nrm= acld,
-#     control=false, a_i_control=controlsink.output.acld, M_i_control=controlsink.output.M );
-
 # integrate
 for exp in [DIMsink, DIMsinkm5, DIMsinkp5]
     println(exp.name)
@@ -147,7 +113,7 @@ function dlna_limit_ztop(e,c) # do not go above the highest control cloud top he
     log(sum(e.output.acld[ij])/sum(c.output.acld[ik]))
 end
 
-# doesn't work:
+# interpolate at max control.output.ztop
 function dlna_itp_ztop(e,c)
     ik = findall(x-> !ismissing(x) && isfinite(x), c.output.ztop)
     mz = maximum(c.output.ztop[ik])
@@ -163,16 +129,16 @@ end
 dlna(ExpDict["subsidence-5%"], ExpDict["control"])   #    -5.1%
 dlna(ExpDict["q&qs+7%"], ExpDict["control"])         #    -7.9%
 dlna(ExpDict["Ecb+2%"], ExpDict["control"])          #  = -7.9% makes no difference
-dlna(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    +1.6% # HUGE SENSITIVITY to this!
-dlna(ExpDict["DIM"], ExpDict["control"])             #  = +1.6%
+dlna(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    -2.0% # HUGE SENSITIVITY to this!
+dlna(ExpDict["DIM"], ExpDict["control"])             #  = -2.0%
 
 dlna_limit_index(ExpDict["subsidence-5%"], ExpDict["control"])   #    -5.1%
 dlna_limit_index(ExpDict["q&qs+7%"], ExpDict["control"])         #    -7.9%
-dlna_limit_index(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    +1.6% # HUGE SENSITIVITY to this!
+dlna_limit_index(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    -2.0% # HUGE SENSITIVITY to this!
 
 dlna_itp_ztop(ExpDict["subsidence-5%"], ExpDict["control"])   #    -5.1%
-dlna_itp_ztop(ExpDict["q&qs+7%"], ExpDict["control"])         #    -8.9%
-dlna_itp_ztop(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    -2.8% # sensitive to extra clouds at top!
+dlna_itp_ztop(ExpDict["q&qs+7%"], ExpDict["control"])         #    -7.9%
+dlna_itp_ztop(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    -2.2% # sensitive to extra clouds at top!
 
 dlna_limit_ztop(ExpDict["subsidence-5%"], ExpDict["control"])   #    -5.1%
 dlna_limit_ztop(ExpDict["q&qs+7%"], ExpDict["control"])         #    -8.9%
@@ -184,7 +150,7 @@ dlna_limit_ztop(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    -2.8% # sen
 # E2 sink rate experiments
 dlna(ExpDict["DIMsink"], ExpDict["control-sink"])    #    +2.4%
 dlna(ExpDict["DIMsink-5%"], ExpDict["control-sink"]) #    +4.2%
-dlna(ExpDict["DIMsink+5%"], ExpDict["control-sink"]) #    -4.4%
+dlna(ExpDict["DIMsink+5%"], ExpDict["control-sink"]) #    -4.5%
 
 # make fonts bigger by mutating rcParams
 font_settings = Dict(
@@ -205,7 +171,9 @@ function plot_cld_tot_profs(expmts)
         ztop = ExpDict[exp].output.ztop
         ik = findall(x-> !ismissing(x) && isfinite(x), ztop)
         ac = cumsum(ExpDict[exp].output.acld[ik])
-        ax.plot(ac*1e2, ztop[ik]/1e3, linewidth=0.5, marker=".", label="$(exp), a=$(round(maximum(ac*100), digits=1))%")
+        ax.plot(ac*1e2, ztop[ik]/1e3, 
+            linewidth=0.5, marker=".", markersize=2,
+            label="$(exp), a=$(round(maximum(ac*100), digits=1))%")
     end
     ax.set_xlabel("cumulative cloud fraction (%)")
     ax.set_ylabel("cloud top height (km)")

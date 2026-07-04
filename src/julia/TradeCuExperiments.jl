@@ -180,9 +180,21 @@ function define_experiments(; ctx::ModelContext)
         description="E_cb + 2%, q&qs+7%, subsidence-5%",
         E_cb=E_cb*1.02 )
 
+    z_norm = clamp.((ctx.z .- 0) ./ (2000 - 0), 0,1) # normalized z coordinate between cloud base and cloud top
+    fac = 0.95 .+ z_norm*0.05
+    q_new = @. (1 - fac*(1-qm/qs)) * qs*1.07
+    
+    # multiply qm by a factor to increase the subcloud (1-RH) by 5%, 
+    # but has smaller effect on the saturation deficit as RH is smaller aloft
+    # i0 = findfirst(isfinite,qm)
+    # q0 = qm[i0]
+    # rh = q0 / qs[i0]
+    # rh_new = 1 - 0.95*(1-rh)
+    # rh_new/rh
+
     cRHminus5pct = define_experiment( ecbplus2pct; name="(1-RH)-5%", 
         description="subcloud (1-RH)-5%, E_cb+2%, q&qs+7%, subsidence-5%",
-        qm=@. (1 - 0.95*(1-qm/qs)) * qs * 1.07 )
+        qm=q_new )
 
     # "DIM" is exactly as "(1-RH)-5%" above
     DIM = define_experiment( cRHminus5pct; name="DIM", 
@@ -200,20 +212,6 @@ function define_experiments(; ctx::ModelContext)
     )
 end
 
-# should just use define_experiment to define a sink experiment
-# function define_control_sink_experiment(; ctx::ModelContext, sinkz=sinkz, 
-#     name="control-sink", description="control sink rate experiment",
-#     control=true, a_i_control=nothing, M_i_control=nothing)
-#     ( qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv,
-#         tot_sink, cth_bin, rfv_acc, rfv_nrm, 
-#         rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx)
-#     ns = length(tot_sink) # not used
-
-#     return Experiment( name, description,
-#             ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv, sinkz, cth_bin, rfv_acc, rfv_nrm,
-#             control, a_i_control, M_i_control),
-#             allocate_output(nz, length(sinkz)) )
-# end
 # use define_experiment to define a new experiment exactly like the control, but with a new sink rate array sinkz
 
 "gets GOES area for nearest cloud top height"
