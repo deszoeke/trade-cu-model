@@ -40,7 +40,7 @@ ctx, ExpDict, controlsink, sinkm5, sinkp5 = test_control_sink();
 # load standard parameters
 ( qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv,
     tot_sink, cth_bin, rfv_acc, rfv_nrm, 
-    rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx);
+    rhoL, ns, nz ) = setup_experiments(ctx=ctx);
 # Get matched total sink rate and cloud top ensemble from control experiment
 # aligned with the z grid for use in experiments.
 # controlsink.output.acld; cloud fractions interpolated to ztop = z grid
@@ -134,7 +134,7 @@ open("cloud_frac_table.txt", "w") do io
         println("cloud fraction, % change from control")
         println(@sprintf("%-15s | %10s", "experiment", "dlna")) # interpolating to ztop
         println("-"^30)
-        for exp in ["subsidence-5%", "q&qs+7%", "Ecb+2%", "lclRH+0.00875", "lclRH+0.0175"]
+        for exp in ["subsidence-5%", "Ecb+2%", "q&qs+7%", "lclRH+0.00875", "lclRH+0.0175"]
             println(@sprintf("%-15s | %10.2f", exp, 
                 100*dlna_itp_ztop(   ExpDict[exp], ExpDict["control"]) ) )
         end

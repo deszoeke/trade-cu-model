@@ -117,8 +117,7 @@ function setup_experiments(; ctx::ModelContext)
     ns = length(tot_sink)
     nz = length(z)
     return ( qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv,
-        tot_sink, cth_bin, rfv_acc, rfv_nrm, 
-        rhoL, E_cb, qcb, ns, nz )
+        tot_sink, cth_bin, rfv_acc, rfv_nrm, rhoL, ns, nz )
 end
 
 allocate_output(nz,ns) = ModelOutput( 
@@ -150,9 +149,10 @@ end
 "initialize experiments with input parameters and empty output structures"
 function define_experiments(; ctx::ModelContext)
     ( qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv,
-        tot_sink, cth_bin, rfv_acc, rfv_nrm, 
-        rhoL, E_cb, qcb, ns, nz ) = setup_experiments(ctx=ctx)
+        tot_sink, cth_bin, rfv_acc, rfv_nrm, rhoL, ns, nz ) = setup_experiments(ctx=ctx)
         
+    icb = findfirst(ctx.z .>= zcb) # cloud base index
+
     # initialize experiment input and output structures
     control = define_experiment(; name="control", description="Control",
         qm=qm, qs=qs, zcb=zcb, qcb=qcb, E_cb=E_cb, x=x, divg=divg, sfc_adv=sfc_adv, tot_sink=tot_sink, 
@@ -169,20 +169,17 @@ function define_experiments(; ctx::ModelContext)
         divg=divg*0.95, sfc_adv=0.95*sfc_adv,
         control=false, a_i_control=a_i_control, M_i_control=M_i_control )
 
-    qsplus7pct = define_experiment(subsminus5pct; name="qs+7%", description="qs+7%, LS subsidence-5%, LOW RH!",
+    ecbplus2pct = define_experiment(subsminus5pct; name="Ecb+2%", 
+        description="E_cb+2%, q&qs+7%, LS subsidence-5%",
+        E_cb=E_cb*1.02 )
+    
+    qsplus7pct = define_experiment(ecbplus2pct; name="qs+7%", 
+        description="qs+7%, LS subsidence-5% LOW RH!",
         qs=qs*1.07, qcb=qcb*1.07 )
 
     qplus7pct = define_experiment(qsplus7pct; name="q&qs+7%", 
-        description="q and qs +7%, subsidence-5%, RH=control",
+        description="q and qs +7%, E_cb+2%, subsidence-5%, RH=control",
         qm=qm*1.07 )
-
-    ecbplus2pct = define_experiment(qplus7pct; name="Ecb+2%", 
-        description="E_cb + 2%, q&qs+7%, subsidence-5%",
-        E_cb=E_cb*1.02 )
-
-    # z_norm = clamp.((ctx.z .- 0) ./ (2000 - 0), 0,1) # normalized z coordinate between cloud base and cloud top
-    # fac = 0.95 .+ z_norm*0.05
-    # q_new = @. (1 - fac*(1-qm/qs)) * qs*1.07
     
     "add absolute delta RH, and linearly taper delta RH to zero at zoff"
     modifysfcRH(h, z, zoff=zcb, sfcfac=0.05) = h + sfcfac*(1-h) * clamp((zoff-z)/zoff, 0,1)
@@ -194,20 +191,12 @@ function define_experiments(; ctx::ModelContext)
     # plot(modifysfcRH.(qm./qs, ctx.z, 2*zcb), ctx.z/1e3)
     # plot(modifysfcRH.(qm./qs, ctx.z, 4*zcb), ctx.z/1e3)
 
-    # multiply qm by a factor to increase the subcloud (1-RH) by 5%, 
-    # but has smaller effect on the saturation deficit as RH is smaller aloft
-    # i0 = findfirst(isfinite,qm)
-    # q0 = qm[i0]
-    # rh = q0 / qs[i0]
-    # rh_new = 1 - 0.95*(1-rh)
-    # rh_new/rh
-
-    lclRHplusp00875 = define_experiment( ecbplus2pct; name="lclRH+0.00875", 
-        description="LCL RH+0.00875, E_cb+2%, q&qs+7%, subsidence-5%",
+    lclRHplusp003 = define_experiment( qplus7pct; name="lclRH+0.003", 
+        description="LCL RH+0.003, E_cb+2%, q&qs+7%, subsidence-5%",
         qm=modifysfcRH.(qm./qs, ctx.z, 2*zcb) .* qs*1.07 )
 
-    lclRHplusp0175 = define_experiment( ecbplus2pct; name="lclRH+0.0175", 
-        description="LCL RH+0.0175, E_cb+2%, q&qs+7%, subsidence-5%",
+    lclRHplusp006 = define_experiment( qplus7pct; name="lclRH+0.006", 
+        description="LCL RH+0.006, E_cb+2%, q&qs+7%, subsidence-5%",
         qm=modifylclRH.(qm./qs, ctx.z) .* qs*1.07 )
     
     # # "DIM" is exactly as "sfc(1-RH)-5%" above
@@ -222,8 +211,8 @@ function define_experiments(; ctx::ModelContext)
         "qs+7%" => qsplus7pct,
         "q&qs+7%" => qplus7pct,
         "Ecb+2%" => ecbplus2pct,
-        "lclRH+0.00875" => lclRHplusp00875,
-        "lclRH+0.0175" => lclRHplusp0175    )
+        "lclRH+0.003" => lclRHplusp003,
+        "lclRH+0.006" => lclRHplusp006    )
 end
 
 # use define_experiment to define a new experiment exactly like the control, but with a new sink rate array sinkz
