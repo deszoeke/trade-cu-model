@@ -109,7 +109,7 @@ function dlna_limit_ztop(e,c) # do not go above the highest control cloud top he
     ik = findall(x-> !ismissing(x) && isfinite(x), c.output.ztop)
     mz = maximum(c.output.ztop[ik])
     ij = findall(x-> !ismissing(x) && isfinite(x) && x<=mz, e.output.ztop)
-    println("max ztop for control = $(mz/1e3) km, max ztop for experiment = $(maximum(e.output.ztop[ij])/1e3) km")
+    # println("max ztop for control = $(mz/1e3) km, max ztop for experiment = $(maximum(e.output.ztop[ij])/1e3) km")
     log(sum(e.output.acld[ij])/sum(c.output.acld[ik]))
 end
 
@@ -125,32 +125,38 @@ function dlna_itp_ztop(e,c)
     log(ea/ca)
 end
 
-# E1 experiments
-dlna(ExpDict["subsidence-5%"], ExpDict["control"])   #    -5.1%
-dlna(ExpDict["q&qs+7%"], ExpDict["control"])         #    -7.9%
-dlna(ExpDict["Ecb+2%"], ExpDict["control"])          #  = -7.9% makes no difference
-dlna(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    -2.0% # HUGE SENSITIVITY to this!
-dlna(ExpDict["DIM"], ExpDict["control"])             #  = -2.0%
+# list out sensitivity for E1 experiments
+begin
+println(@sprintf("%-15s %10s %10s %10s %10s", "experiment", "dlna", "limit_index", "itp_ztop", "limit_ztop"))
+println("-"^50)
+for exp in ["subsidence-5%", "q&qs+7%", "Ecb+2%", "(1-RH)-5%", "DIM"]
+    println(@sprintf("%-15s %10.3f %10.3f %10.3f %10.3f", exp, 
+        dlna(            ExpDict[exp], ExpDict["control"]),
+        dlna_limit_index(ExpDict[exp], ExpDict["control"]),
+        dlna_itp_ztop(   ExpDict[exp], ExpDict["control"]),
+        dlna_limit_ztop( ExpDict[exp], ExpDict["control"]) ) )
+end
+end
 
-dlna_limit_index(ExpDict["subsidence-5%"], ExpDict["control"])   #    -5.1%
-dlna_limit_index(ExpDict["q&qs+7%"], ExpDict["control"])         #    -7.9%
-dlna_limit_index(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    -2.0% # HUGE SENSITIVITY to this!
+println("$(dlna_limit_index(ExpDict["subsidence-5%"], ExpDict["control"]))")   #    -5.1%
+println("$(dlna_limit_index(ExpDict["q&qs+7%"], ExpDict["control"]))")         #    -7.9%
+println("$(dlna_limit_index(ExpDict["(1-RH)-5%"], ExpDict["control"]))")       #    -2.0% # HUGE SENSITIVITY to this!
 
-dlna_itp_ztop(ExpDict["subsidence-5%"], ExpDict["control"])   #    -5.1%
-dlna_itp_ztop(ExpDict["q&qs+7%"], ExpDict["control"])         #    -7.9%
-dlna_itp_ztop(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    -2.2% # sensitive to extra clouds at top!
+println("$(dlna_itp_ztop(ExpDict["subsidence-5%"], ExpDict["control"]))")   #    -5.1%
+println("$(dlna_itp_ztop(ExpDict["q&qs+7%"], ExpDict["control"]))")         #    -7.9%
+println("$(dlna_itp_ztop(ExpDict["(1-RH)-5%"], ExpDict["control"]))")       #    -2.2% # sensitive to extra clouds at top!
 
-dlna_limit_ztop(ExpDict["subsidence-5%"], ExpDict["control"])   #    -5.1%
-dlna_limit_ztop(ExpDict["q&qs+7%"], ExpDict["control"])         #    -8.9%
-dlna_limit_ztop(ExpDict["(1-RH)-5%"], ExpDict["control"])       #    -2.8% # sensitive to extra clouds at top!
+println("$(dlna_limit_ztop(ExpDict["subsidence-5%"], ExpDict["control"]))")   #    -5.1%
+println("$(dlna_limit_ztop(ExpDict["q&qs+7%"], ExpDict["control"]))")         #    -8.9%
+println("$(dlna_limit_ztop(ExpDict["(1-RH)-5%"], ExpDict["control"]))")       #    -2.8% # sensitive to extra clouds at top!
 
 # Inverse dependence of mass flux on Δq, M = G/(Δq) is key,
 # so that increasing Δq decreases M = a*w and thus cloud fraction.
 
 # E2 sink rate experiments
-dlna(ExpDict["DIMsink"], ExpDict["control-sink"])    #    +2.4%
-dlna(ExpDict["DIMsink-5%"], ExpDict["control-sink"]) #    +4.2%
-dlna(ExpDict["DIMsink+5%"], ExpDict["control-sink"]) #    -4.5%
+println("$(dlna(ExpDict["DIMsink"], ExpDict["control-sink"]))")    #    +2.4%
+println("$(dlna(ExpDict["DIMsink-5%"], ExpDict["control-sink"]))") #    +4.2%
+println("$(dlna(ExpDict["DIMsink+5%"], ExpDict["control-sink"]))") #    -4.5%
 
 # make fonts bigger by mutating rcParams
 font_settings = Dict(
