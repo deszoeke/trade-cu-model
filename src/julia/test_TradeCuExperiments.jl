@@ -134,21 +134,12 @@ open("cloud_frac_table.txt", "w") do io
         println("cloud fraction, % change from control")
         println(@sprintf("%-15s | %10s", "experiment", "dlna")) # interpolating to ztop
         println("-"^30)
-        for exp in ["subsidence-5%", "Ecb+2%", "q&qs+7%", "lclRH+0.00875", "lclRH+0.0175"]
+        for exp in ["subsidence-5%", "Ecb+2%", "q&qs+7%", "lclRH+0.003", "lclRH+0.006"]
             println(@sprintf("%-15s | %10.2f", exp, 
                 100*dlna_itp_ztop(   ExpDict[exp], ExpDict["control"]) ) )
         end
     end
 end
-
-# cloud fraction, % change from control
-# experiment      |       dlna
-# ------------------------------
-# subsidence-5%   |      -5.13
-# q&qs+7%         |      -7.86
-# Ecb+2%          |      -7.86
-# lclRH+0.00875   |      -5.14
-# lclRH+0.0175    |      -2.27
 
 # Inverse dependence of mass flux on Δq, M = G/(Δq) is key,
 # so that increasing Δq decreases M = a*w and thus cloud fraction.
