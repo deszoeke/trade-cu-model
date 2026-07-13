@@ -132,7 +132,6 @@ allocate_output(nz,ns) = ModelOutput(
 function define_experiment(; name, description, 
     qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv, tot_sink, cth_bin, rfv_acc, rfv_nrm, 
     control=true, a_i_control=nothing, M_i_control=nothing)
-
     Experiment( name, description,
         ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv, tot_sink, cth_bin, rfv_acc, rfv_nrm, control, a_i_control, M_i_control),
         allocate_output(length(qm),length(tot_sink)) )
@@ -157,7 +156,8 @@ function define_experiments(; ctx::ModelContext)
     # initialize experiment input and output structures
     control = define_experiment(; name="control", description="Control",
         qm=qm, qs=qs, zcb=zcb, qcb=qcb, E_cb=E_cb, x=x, divg=divg, sfc_adv=sfc_adv, tot_sink=tot_sink, 
-        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, control=true, a_i_control=nothing, M_i_control=nothing )
+        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, 
+        control=true, a_i_control=nothing, M_i_control=nothing )
     # integrate control to pass control a_i, M_i to experiments
     integrate_experiment!(control, ctx=ctx)
     # control a_i and M_i will scale a for experiments
@@ -180,10 +180,20 @@ function define_experiments(; ctx::ModelContext)
         description="E_cb + 2%, q&qs+7%, subsidence-5%",
         E_cb=E_cb*1.02 )
 
-    z_norm = clamp.((ctx.z .- 0) ./ (2000 - 0), 0,1) # normalized z coordinate between cloud base and cloud top
-    fac = 0.95 .+ z_norm*0.05
-    q_new = @. (1 - fac*(1-qm/qs)) * qs*1.07
+    # z_norm = clamp.((ctx.z .- 0) ./ (2000 - 0), 0,1) # normalized z coordinate between cloud base and cloud top
+    # fac = 0.95 .+ z_norm*0.05
+    # q_new = @. (1 - fac*(1-qm/qs)) * qs*1.07
     
+    "add absolute delta RH, and linearly taper delta RH to zero at zoff"
+    modifysfcRH(h, z, zoff=zcb, sfcfac=0.05) = h + sfcfac*(1-h) * clamp((zoff-z)/zoff, 0,1)
+    function modifylclRH(h, z, zcb=zcb, zoff=2*zcb, sfcfac=0.05) 
+        return h + sfcfac*(1-h) * clamp((zoff-z)/(zoff-zcb), 0,1)
+    end
+    # plot(qm./qs, ctx.z/1e3)
+    # plot(modifysfcRH.(qm./qs, ctx.z), ctx.z/1e3)
+    # plot(modifysfcRH.(qm./qs, ctx.z, 2*zcb), ctx.z/1e3)
+    # plot(modifysfcRH.(qm./qs, ctx.z, 4*zcb), ctx.z/1e3)
+
     # multiply qm by a factor to increase the subcloud (1-RH) by 5%, 
     # but has smaller effect on the saturation deficit as RH is smaller aloft
     # i0 = findfirst(isfinite,qm)
@@ -192,14 +202,19 @@ function define_experiments(; ctx::ModelContext)
     # rh_new = 1 - 0.95*(1-rh)
     # rh_new/rh
 
-    cRHminus5pct = define_experiment( ecbplus2pct; name="(1-RH)-5%", 
-        description="subcloud (1-RH)-5%, E_cb+2%, q&qs+7%, subsidence-5%",
-        qm=q_new )
+    lclRHplusp00875 = define_experiment( ecbplus2pct; name="lclRH+0.00875", 
+        description="LCL RH+0.00875, E_cb+2%, q&qs+7%, subsidence-5%",
+        qm=modifysfcRH.(qm./qs, ctx.z, 2*zcb) .* qs*1.07 )
 
-    # "DIM" is exactly as "(1-RH)-5%" above
-    DIM = define_experiment( cRHminus5pct; name="DIM", 
-        description="Descent Inhibited Moisture Flux; a_i-5%, (1-RH)-5%, E_cb+2%, q&qs+7%, subsidence-5%" )
+    lclRHplusp0175 = define_experiment( ecbplus2pct; name="lclRH+0.0175", 
+        description="LCL RH+0.0175, E_cb+2%, q&qs+7%, subsidence-5%",
+        qm=modifylclRH.(qm./qs, ctx.z) .* qs*1.07 )
     
+    # # "DIM" is exactly as "sfc(1-RH)-5%" above
+    # DIM = define_experiment( cRHminus5pct; name="DIM", 
+    #     description="Descent Inhibited Moisture Flux; sfc(1-RH)-5%, E_cb+2%, q&qs+7%, subsidence-5%" )
+    # consider all these experiments DIM experiments
+
     # experiment dictionary for looping, and defining short names
     ExpDict = Dict(
         "control" => control,
@@ -207,9 +222,8 @@ function define_experiments(; ctx::ModelContext)
         "qs+7%" => qsplus7pct,
         "q&qs+7%" => qplus7pct,
         "Ecb+2%" => ecbplus2pct,
-        "(1-RH)-5%" => cRHminus5pct,
-        "DIM" => DIM
-    )
+        "lclRH+0.00875" => lclRHplusp00875,
+        "lclRH+0.0175" => lclRHplusp0175    )
 end
 
 # use define_experiment to define a new experiment exactly like the control, but with a new sink rate array sinkz
@@ -363,8 +377,8 @@ function test_control_sink()
     "qs+7%",
     "q&qs+7%",
     "Ecb+2%",
-    "(1-RH)-5%",
-    "DIM" ]
+    "sfc(1-RH)-5%",
+    "lcl(1-RH)-5%" ]
   
     # get sink rate as a function of cloud top height from control
     sinkz_full = interp_sinkrate( ExpDict["control"]; ctx=ctx ) # nz-length, extrapolates!
@@ -403,8 +417,8 @@ function test_control_sink()
     "qs+7%",
     "q&qs+7%",
     "Ecb+2%",
-    "(1-RH)-5%",
-    "DIM",
+    "sfc(1-RH)-5%",
+    "lcl(1-RH)-5%",
     "control-sink",
     "control-sink-5%",
     "control-sink+5%" ]

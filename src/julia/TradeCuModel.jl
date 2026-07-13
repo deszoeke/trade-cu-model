@@ -883,7 +883,7 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
         fac = M[icb,:] ./ M_i_control
         a_i = fac .* a_i_control # Vector, new cloud area fraction scaled up for new experiment
     end
-    println("size(Gcld) = $(size(Gcld)), size(a_i) = $(size(a_i))")
+    # println("size(Gcld) = $(size(Gcld)), size(a_i) = $(size(a_i))")
     Fcld = Gcld ./ a_i'
     Fp   = Gp   ./ a_i'
 
@@ -899,7 +899,7 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     dq = qc .- exp.input.qm
     # Fcld is in-cloud moisture flux [z, sink rate]; Fcld = w * dq; M = w * a; Gcld = M * dq
     # w = M ./ a_i
-    println("size(Fcld) = $(size(Fcld)), size(dq) = $(size(dq))")
+    # println("size(Fcld) = $(size(Fcld)), size(dq) = $(size(dq))")
     w = Fcld ./ dq           # in-cloud plume velocity [z, sink rate]
     for i in axes(w,2)
         zi = ztop[i]

@@ -1,0 +1,8 @@
+cloud fraction, % change from control
+experiment      |       dlna
+------------------------------
+subsidence-5%   |      -5.13
+q&qs+7%         |      -7.86
+Ecb+2%          |      -7.86
+lclRH+0.00875   |      -5.14
+lclRH+0.0175    |      -2.27

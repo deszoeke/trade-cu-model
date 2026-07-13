@@ -113,7 +113,10 @@ function dlna_limit_ztop(e,c) # do not go above the highest control cloud top he
     log(sum(e.output.acld[ij])/sum(c.output.acld[ik]))
 end
 
-# interpolate at max control.output.ztop
+"""
+dlna_itp_ztop(e,c)   interpolate at max control.output.ztop
+compares the same valid cloud levels as for the control experiment
+"""
 function dlna_itp_ztop(e,c)
     ik = findall(x-> !ismissing(x) && isfinite(x), c.output.ztop)
     mz = maximum(c.output.ztop[ik])
@@ -125,30 +128,27 @@ function dlna_itp_ztop(e,c)
     log(ea/ca)
 end
 
-# list out sensitivity for E1 experiments
-begin
-println(@sprintf("%-15s %10s %10s %10s %10s", "experiment", "dlna", "limit_index", "itp_ztop", "limit_ztop"))
-println("-"^50)
-for exp in ["subsidence-5%", "q&qs+7%", "Ecb+2%", "(1-RH)-5%", "DIM"]
-    println(@sprintf("%-15s %10.3f %10.3f %10.3f %10.3f", exp, 
-        dlna(            ExpDict[exp], ExpDict["control"]),
-        dlna_limit_index(ExpDict[exp], ExpDict["control"]),
-        dlna_itp_ztop(   ExpDict[exp], ExpDict["control"]),
-        dlna_limit_ztop( ExpDict[exp], ExpDict["control"]) ) )
+# print readable table for E1 experiments
+open("cloud_frac_table.txt", "w") do io
+    redirect_stdout(io) do
+        println("cloud fraction, % change from control")
+        println(@sprintf("%-15s | %10s", "experiment", "dlna")) # interpolating to ztop
+        println("-"^30)
+        for exp in ["subsidence-5%", "q&qs+7%", "Ecb+2%", "lclRH+0.00875", "lclRH+0.0175"]
+            println(@sprintf("%-15s | %10.2f", exp, 
+                100*dlna_itp_ztop(   ExpDict[exp], ExpDict["control"]) ) )
+        end
+    end
 end
-end
 
-println("$(dlna_limit_index(ExpDict["subsidence-5%"], ExpDict["control"]))")   #    -5.1%
-println("$(dlna_limit_index(ExpDict["q&qs+7%"], ExpDict["control"]))")         #    -7.9%
-println("$(dlna_limit_index(ExpDict["(1-RH)-5%"], ExpDict["control"]))")       #    -2.0% # HUGE SENSITIVITY to this!
-
-println("$(dlna_itp_ztop(ExpDict["subsidence-5%"], ExpDict["control"]))")   #    -5.1%
-println("$(dlna_itp_ztop(ExpDict["q&qs+7%"], ExpDict["control"]))")         #    -7.9%
-println("$(dlna_itp_ztop(ExpDict["(1-RH)-5%"], ExpDict["control"]))")       #    -2.2% # sensitive to extra clouds at top!
-
-println("$(dlna_limit_ztop(ExpDict["subsidence-5%"], ExpDict["control"]))")   #    -5.1%
-println("$(dlna_limit_ztop(ExpDict["q&qs+7%"], ExpDict["control"]))")         #    -8.9%
-println("$(dlna_limit_ztop(ExpDict["(1-RH)-5%"], ExpDict["control"]))")       #    -2.8% # sensitive to extra clouds at top!
+# cloud fraction, % change from control
+# experiment      |       dlna
+# ------------------------------
+# subsidence-5%   |      -5.13
+# q&qs+7%         |      -7.86
+# Ecb+2%          |      -7.86
+# lclRH+0.00875   |      -5.14
+# lclRH+0.0175    |      -2.27
 
 # Inverse dependence of mass flux on Δq, M = G/(Δq) is key,
 # so that increasing Δq decreases M = a*w and thus cloud fraction.
@@ -188,7 +188,7 @@ function plot_cld_tot_profs(expmts)
     return ax
 end
 
-expmts = ["control", "subsidence-5%", "q&qs+7%", "(1-RH)-5%"] # the last is equivalent to DIM
+expmts = ["control", "subsidence-5%", "q&qs+7%", "lclRH+0.00875", "lclRH+0.0175"]
 fig = gcf(); fig.clf()
 ax = plot_cld_tot_profs(expmts)
 
@@ -223,10 +223,10 @@ end
 plot_exp_var(e::Experiment, var::Symbol, ctx=ctx; ax=nothing, kwargs...) = plot_exp_var(e::Experiment, getfield(e.output, var), ctx; ax=ax, kwargs...)
 plot_exp_var(f, e::Experiment, var::Symbol, ctx=ctx; ax=nothing, kwargs...) = plot_exp_var(e::Experiment, f.(getfield(e.output, var)), ctx; ax=ax, kwargs...)
 
-# plot Δq = qc-qm for (1-RH)-5% experiment
+# plot Δq = qc-qm for surface (1-RH)-5% experiment
 dq_cld(e) = e.output.qc .- e.input.qm
-# expmts = ["control", "subsidence-5%", "q&qs+7%", "(1-RH)-5%"]
-exp = "(1-RH)-5%" # equivalent to DIM
+# expmts = ["control", "subsidence-5%", "q&qs+7%", "sfc(1-RH)-5%"]
+exp = "sfc(1-RH)-5%"
 e = ExpDict[exp]
 c = ExpDict["control"]
 fig = gcf(); # fig.set_size_inches([5, 5]); 
