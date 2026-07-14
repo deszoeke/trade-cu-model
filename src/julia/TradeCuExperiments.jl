@@ -146,6 +146,22 @@ function define_experiment(c::Experiment; name=c.name, description=c.description
         allocate_output(length(qm),length(tot_sink)) )
 end
 
+# functions to modify RH for experiments
+"add absolute delta RH, and linearly taper delta RH to zero at zoff"
+rh(e) = ExpDict[e].input.qm ./ ExpDict[e].input.qs
+modifysfcRH(h, z, zoff=zcb, sfcfac=0.05) = h + sfcfac*(1-h) * clamp((zoff-z)/zoff, 0,1)
+modifylclRH(h, z, zcb=zcb, zoff=2*zcb, sfcfac=0.05) = h + sfcfac*(1-h) * clamp((zoff-z)/(zoff-zcb), 0,1)
+function plot_lclRH_experiments(ctx, ExpDict)
+    clf()
+    plot(rh("lclRH+0.003").-rh("control"), ctx.z/1e3, label="lclRH+0.003")
+    plot(rh("lclRH+0.006").-rh("control"), ctx.z/1e3, label="lclRH+0.006")
+    xlim([-5e-5, 0.014]); ylim([0, 1.5])
+    title("experiment - control")
+    legend(frameon=false, loc="upper right")
+    xlabel("RH change"); ylabel("height (km)")
+    # [ savefig("lclRH_experiments.$(fmt)") for fmt in ["png", "svg", "pdf"] ]
+end
+
 "initialize experiments with input parameters and empty output structures"
 function define_experiments(; ctx::ModelContext)
     ( qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv,
@@ -181,16 +197,6 @@ function define_experiments(; ctx::ModelContext)
         description="q and qs +7%, E_cb+2%, subsidence-5%, RH=control",
         qm=qm*1.07 )
     
-    "add absolute delta RH, and linearly taper delta RH to zero at zoff"
-    modifysfcRH(h, z, zoff=zcb, sfcfac=0.05) = h + sfcfac*(1-h) * clamp((zoff-z)/zoff, 0,1)
-    function modifylclRH(h, z, zcb=zcb, zoff=2*zcb, sfcfac=0.05) 
-        return h + sfcfac*(1-h) * clamp((zoff-z)/(zoff-zcb), 0,1)
-    end
-    # plot(qm./qs, ctx.z/1e3)
-    # plot(modifysfcRH.(qm./qs, ctx.z), ctx.z/1e3)
-    # plot(modifysfcRH.(qm./qs, ctx.z, 2*zcb), ctx.z/1e3)
-    # plot(modifysfcRH.(qm./qs, ctx.z, 4*zcb), ctx.z/1e3)
-
     lclRHplusp003 = define_experiment( qplus7pct; name="lclRH+0.003", 
         description="LCL RH+0.003, E_cb+2%, q&qs+7%, subsidence-5%",
         qm=modifysfcRH.(qm./qs, ctx.z, 2*zcb) .* qs*1.07 )
