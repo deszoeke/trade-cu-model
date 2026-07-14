@@ -36,6 +36,7 @@ export dadsinkrate, find_contour!, interpolate_ascending, interpolate_descending
 export interp_sinkrate, interp_cloudtop_height
 export tmean, tstd
 export get_sounding_dataset, get_mean_soundings, get_goes_cloud_data
+export filt_rfv
 export virtual_temp, calc_rhoL, Lv, LvK
 # export largescale_drying
 
@@ -91,18 +92,18 @@ end
 
 recurse(f, x, n) = n>0 ? f(recurse(f, x, n-1)) : x
 "abstractly composes f n times; recursef(f,3) = f∘f∘f = x->f(f(f(x))), without evaluating"
-recursef(f,n) = reduce(∘, ntuple(_ -> f, n)) 
+recursef(f,n) = reduce(∘, ntuple(_ -> f, n)) # doesn't evaluate to a value nicely
 
 "declare arrays with elements of Union{Missing,T} unions"
 similarmissing(s::Tuple, T::Type=Float64) = Array{Union{Missing, T}}(missing, s)
 similarmissing(A::Array) = similarmissing(size(A), eltype(A))
 
 "moving_average(A, m) m-point moving average of A"
-function moving_average(A::AbstractArray, m::Int, cond=x->true)
+function moving_average(A::AbstractArray, m::Union{Int,Vector{Int},Tuple{Int}}, cond=x->true)
     out = similar(A)
     R = CartesianIndices(A)
     Ifirst, Ilast = first(R), last(R)
-    I1 = m÷2 * oneunit(Ifirst)
+    I1 = CartesianIndex(Tuple(m.÷2) .* Tuple(oneunit(Ifirst))) # index 1/2 window
     for I in R
         n, s = 0, zero(eltype(out))
         for J in max(Ifirst, I-I1):min(Ilast, I+I1)
@@ -497,7 +498,7 @@ function calc_G_allsky(ztop; z,
     ddz(z_, q=qm,z=z) = interpolate_ascending( z[1:end-1].+0.5*diff(z), diff(q) ./ diff(z) )(z_)
     "analytic large-scale drying profile S_ls(z) = -w*dq/dz - 1.7e-8*(zdivg-z)/zdivg"
     function largescale_drying(q, z_; divg=divg, sfc_adv=sfc_adv)
-        zdivg = 4e3 # m; hardwired
+        zdivg = 4e3 # m; top height hardwired
         wdqdz = subsidence(z_; divg=divg, zi=zdivg) .* ddz(z_, q)
         -wdqdz - sfc_adv * max(0, (zdivg - z_) ./ zdivg) # advection increases to sfc_adv at surface
     end
@@ -633,6 +634,50 @@ function interpolate_ascending( X::AbstractVector{<:Real}, Y::AbstractVector{<:R
         bilinear(X[j-1],X[j], Y[j-1],Y[j], x)
     end
     return itp
+end
+
+"returns a function that interpolates y(x) from vectors X, Y with X descending"
+function interp_extrap_descending( X::AbstractVector{<:Real}, Y::AbstractVector{<:Real} )
+    function itp(x)
+        # strictly NaN true out-of-bounds inputs
+        # (x > X[1] || x < X[end]) && return NaN
+        # search for descending vector order
+        j = clamp(searchsortedfirst(X, x, rev=true), 2, length(X)) # clamped to data intervals [2, N]
+        bilinear(X[j-1],X[j], Y[j-1],Y[j], x)
+    end
+    return itp
+end
+
+"returns a function that interpolates y(x) from vectors X, Y with X ascending"
+function interp_extrap_ascending( X::AbstractVector{<:Real}, Y::AbstractVector{<:Real} )
+    function itp(x)
+        # strictly NaN true out-of-bounds inputs
+        # (x < X[1] || x > X[end]) && return NaN
+        # search for ascending vector order
+        j = clamp(searchsortedfirst(X, x), 2, length(X)) # clamped to data intervals [2, N]
+        bilinear(X[j-1],X[j], Y[j-1],Y[j], x)
+    end
+    return itp
+end
+
+# filter rfv_nrm and rfv_acc to reduce noise in cloud fraction
+"""
+filter rfv_nrm with moving average filter.
+extrapolate at bottom, and set top cloud fraction to 0 (avoids undershooting 0 cloud fraction)
+"""
+function filt_rfv(rfv_nrm; n=3, m=5, zerotop=false)
+    mp =  m÷2 * n
+    idx = clamp.(1-mp:lastindex(rfv_nrm)+mp, 1,lastindex(rfv_nrm)) # pad ends
+    good(x) = !ismissing(x) && isfinite(x)
+    flt(x) = recurse(x->moving_average(x, m, good), x, n) # nx moving average filter
+    # extrapolate at bottom
+    r = interp_extrap_ascending( eachindex(rfv_nrm), rfv_nrm ).(1-mp:lastindex(rfv_nrm)+mp) # [mp+1:lastindex(rfv_nrm)+mp]
+    # set last value to last data value = 0
+    r[lastindex(rfv_nrm)+mp:end] .= rfv_nrm[end] 
+    fltidx = mp+1:lastindex(rfv_nrm)+mp
+    y = flt(r)[fltidx]
+    zerotop && (y[end] = 0.0) # set top cloud fraction to 0
+    return y
 end
 
 """

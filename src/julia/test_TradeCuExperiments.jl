@@ -144,10 +144,19 @@ end
 # Inverse dependence of mass flux on Δq, M = G/(Δq) is key,
 # so that increasing Δq decreases M = a*w and thus cloud fraction.
 
-# E2 sink rate experiments
-println("$(dlna(ExpDict["DIMsink"], ExpDict["control-sink"]))")    #    +2.4%
-println("$(dlna(ExpDict["DIMsink-5%"], ExpDict["control-sink"]))") #    +4.2%
-println("$(dlna(ExpDict["DIMsink+5%"], ExpDict["control-sink"]))") #    -4.5%
+# print readable table for E2 sink rate experiments
+begin
+    println("cloud fraction, % change from control")
+    println(@sprintf("%-15s | %10s", "experiment", "dlna")) # interpolating to ztop
+    println("-"^30)
+    for exp in ["DIMsink", "DIMsink-5%", "DIMsink+5%"]
+        println(@sprintf("%-15s | %10.2f", exp, 
+            100*dlna(   ExpDict[exp], ExpDict["control-sink"]) ) )
+    end
+end
+# interpolating to the original ztop gives very different results
+# Clouds with weaker sink rates rise above the original ztop.
+# Stronger sink rates give missing clouds at original ztop.
 
 # make fonts bigger by mutating rcParams
 font_settings = Dict(

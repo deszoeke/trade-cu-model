@@ -43,7 +43,6 @@ export interp_sinkrate #, get_sinkrate
 export integrate_experiment!
 # temporarily export more to experiment in outside environment
 export setup_experiments
-export cloud_i_area
 export test_control_sink
 export calc_ql
 export new_area
@@ -107,8 +106,10 @@ function setup_experiments(; ctx::ModelContext)
     # icb = findfirst(z .>= zcb) # cloud base index
 
     cth_bin = ctx.cth_bin # preliminary context gets clobbered in some experiments
-    rfv_acc = ctx.rfv_acc
-    rfv_nrm = ctx.rfv_nrm
+    # filter cloud fraction data
+    rfv_acc = filt_rfv(ctx.rfv_acc; zerotop=true) # set top cloud fraction to 0
+    rfv_nrm = filt_rfv(ctx.rfv_nrm)
+
     #size(rfv_nrm), size(cth_bin) # (351,1)
 
     rhoL = ctx.rhoL # 2.41e6 J/m^3
@@ -149,8 +150,6 @@ end
 # functions to modify RH for experiments
 "add absolute delta RH, and linearly taper delta RH to zero at zoff"
 rh(e) = ExpDict[e].input.qm ./ ExpDict[e].input.qs
-modifysfcRH(h, z, zoff=zcb, sfcfac=0.05) = h + sfcfac*(1-h) * clamp((zoff-z)/zoff, 0,1)
-modifylclRH(h, z, zcb=zcb, zoff=2*zcb, sfcfac=0.05) = h + sfcfac*(1-h) * clamp((zoff-z)/(zoff-zcb), 0,1)
 function plot_lclRH_experiments(ctx, ExpDict)
     clf()
     plot(rh("lclRH+0.003").-rh("control"), ctx.z/1e3, label="lclRH+0.003")
@@ -166,8 +165,15 @@ end
 function define_experiments(; ctx::ModelContext)
     ( qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv,
         tot_sink, cth_bin, rfv_acc, rfv_nrm, rhoL, ns, nz ) = setup_experiments(ctx=ctx)
-        
+      
     icb = findfirst(ctx.z .>= zcb) # cloud base index
+
+    # filter rfv_acc and rfv_nrm
+    n = 3 # number of times to apply moving average filter  
+    m = 5 # moving average window size
+    mp =  m÷2 * n
+    idx = clamp.(1-mp:lastindex(rfv_nrm)+mp, 1,lastindex(rfv_nrm)) # pad ends
+    flt(x) = recurse(x->moving_average(x, m, good), x, n) # nx moving average filter
 
     # initialize experiment input and output structures
     control = define_experiment(; name="control", description="Control",
@@ -197,13 +203,18 @@ function define_experiments(; ctx::ModelContext)
         description="q and qs +7%, E_cb+2%, subsidence-5%, RH=control",
         qm=qm*1.07 )
     
+    # modify RH in subcloud and cloud base
+    modifysfcRH(h, z; zoff=2*zcb, sfcfac=0.05) = h + sfcfac*(1-h) * clamp((zoff-z)/zoff, 0,1)
+
     lclRHplusp003 = define_experiment( qplus7pct; name="lclRH+0.003", 
         description="LCL RH+0.003, E_cb+2%, q&qs+7%, subsidence-5%",
-        qm=modifysfcRH.(qm./qs, ctx.z, 2*zcb) .* qs*1.07 )
+        qm=modifysfcRH.(qm./qs, ctx.z, zoff=2*zcb) .* qs*1.07 )
+
+    modifylclRH(h, z; zcb=zcb, zoff=2*zcb, sfcfac=0.05) = h + sfcfac*(1-h) * clamp((zoff-z)/(zoff-zcb), 0,1)
 
     lclRHplusp006 = define_experiment( qplus7pct; name="lclRH+0.006", 
         description="LCL RH+0.006, E_cb+2%, q&qs+7%, subsidence-5%",
-        qm=modifylclRH.(qm./qs, ctx.z) .* qs*1.07 )
+        qm=modifylclRH.(qm./qs, ctx.z, zcb=zcb, zoff=2*zcb) .* qs*1.07 )
     
     # # "DIM" is exactly as "sfc(1-RH)-5%" above
     # DIM = define_experiment( cRHminus5pct; name="DIM", 
@@ -223,12 +234,11 @@ end
 
 # use define_experiment to define a new experiment exactly like the control, but with a new sink rate array sinkz
 
+# cloud_i_area not used
 "gets GOES area for nearest cloud top height"
-function cloud_i_area( ctx::ModelContext )
+function cloud_i_area( ctx::ModelContext; cth_bin=ctx.cth_bin, rfv_acc=ctx.rfv_acc )
     z=ctx.z
     nz = length(ctx.z)
-    cth_bin=ctx.cth_bin
-    rfv_acc=ctx.rfv_acc
     # align z grid with fractions
     offset = findfirst(x-> abs(x-cth_bin[1]) < 1.0, z) - 1 # offset for 10 m bins
     a_i = zeros(nz)
@@ -238,11 +248,12 @@ function cloud_i_area( ctx::ModelContext )
 end
 
 "gets GOES area for nearest cloud top height"
-function cloud_i_area( exp::Experiment; ctx::ModelContext )
+function cloud_i_area( exp::Experiment; ctx::ModelContext, 
+    cth_bin=exp.input.cth_bin, # experiment cloud top height supersedes context
+    cth_acc=exp.input.cth_acc )
+
     z=ctx.z
     nz = length(ctx.z)
-    cth_bin=exp.input.cth_bin # experiment cloud top height supersedes context
-    cth_acc=exp.input.cth_acc
     # align z grid with fractions
     offset = findfirst(x-> abs(x-cth_bin[1]) < 1.0, z) - 1 # offset for 10 m bins
     a_i = zeros(nz)
