@@ -380,13 +380,14 @@ function test_control_sink()
     keyorder = [
     "control", 
     "subsidence-5%",
+    "Ecb+2%",
     "qs+7%",
     "q&qs+7%",
-    "Ecb+2%",
     "sfc(1-RH)-5%",
     "lcl(1-RH)-5%" ]
   
     # get sink rate as a function of cloud top height from control
+    # one sink rate per gridded cloud top height
     sinkz_full = interp_sinkrate( ExpDict["control"]; ctx=ctx ) # nz-length, extrapolates!
     ii_cld = findall(700 .≤ ctx.z .≤ 4000)  # 331 elements matching GOES CTH range
     sinkz = sinkz_full[ii_cld]              # sink rates for cloud tops at 700–4000 m
@@ -420,9 +421,9 @@ function test_control_sink()
     keyorder = [
     "control", 
     "subsidence-5%",
+    "Ecb+2%",
     "qs+7%",
     "q&qs+7%",
-    "Ecb+2%",
     "sfc(1-RH)-5%",
     "lcl(1-RH)-5%",
     "control-sink",

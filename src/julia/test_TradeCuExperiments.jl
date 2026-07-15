@@ -57,7 +57,7 @@ ztop, sinkz, acc, acld = good_sinks(controlsink);
 # DIM experiments with different sink rates, to simulate mesoscale organization changes
 DIMsink = define_experiment(controlsink; 
     name="DIMsink", description="DIM sink rate, cloud tops align with z grid",
-    qm=(1 .- 0.95*(1 .- qm./qs)).*qs*1.07, qs=1.07*qs, qcb=1.07*qcb,
+    qm=1.07*qm, qs=1.07*qs, qcb=1.07*qcb,
     E_cb=1.02*E_cb,
     divg=0.95*divg, sfc_adv=0.95*sfc_adv,
     tot_sink=sinkz,               # sinkz decreases with index
@@ -99,6 +99,10 @@ end
 totcld(e) =  sum(filter(isfinite,skipmissing(e.output.acld)))
 # totcld(ExpDict["control-sink"]), totcld(ExpDict["DIMsink"]), totcld(ExpDict["DIMsink-5%"]), totcld(ExpDict["DIMsink+5%"])
 dlna(e,c) = log(totcld(e)/totcld(c))
+function dlna_samelevs(e,c) 
+    ii = good.(e.output.acld) .& good.(c.output.acld)
+    log(sum(e.output.acld[ii])/sum(c.output.acld[ii]))
+end
 # limiting to same sink rate has no effect on E1 experiments
 function dlna_limit_index(e,c) 
     ik = findall(x-> !ismissing(x) && isfinite(x), c.output.ztop)
