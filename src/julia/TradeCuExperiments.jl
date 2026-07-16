@@ -192,7 +192,7 @@ function define_experiments(; ctx::ModelContext)
         control=false, a_i_control=a_i_control, M_i_control=M_i_control )
 
     ecbplus2pct = define_experiment(subsminus5pct; name="Ecb+2%", 
-        description="E_cb+2%, q&qs+7%, LS subsidence-5%",
+        description="E_cb+2%, LS subsidence-5%",
         E_cb=E_cb*1.02 )
     
     qsplus7pct = define_experiment(ecbplus2pct; name="qs+7%", 
@@ -207,15 +207,27 @@ function define_experiments(; ctx::ModelContext)
     modifysfcRH(h, z; zoff=2*zcb, sfcfac=0.05) = h + sfcfac*(1-h) * clamp((zoff-z)/zoff, 0,1)
 
     lclRHplusp003 = define_experiment( qplus7pct; name="lclRH+0.003", 
-        description="LCL RH+0.003, E_cb+2%, q&qs+7%, subsidence-5%",
+        description="LCL RH+0.003, q&qs+7%, E_cb+2%, subsidence-5%",
         qm=modifysfcRH.(qm./qs, ctx.z, zoff=2*zcb) .* qs*1.07 )
 
     modifylclRH(h, z; zcb=zcb, zoff=2*zcb, sfcfac=0.05) = h + sfcfac*(1-h) * clamp((zoff-z)/(zoff-zcb), 0,1)
 
     lclRHplusp006 = define_experiment( qplus7pct; name="lclRH+0.006", 
-        description="LCL RH+0.006, E_cb+2%, q&qs+7%, subsidence-5%",
+        description="LCL RH+0.006, q&qs+7%, E_cb+2%, subsidence-5%",
         qm=modifylclRH.(qm./qs, ctx.z, zcb=zcb, zoff=2*zcb) .* qs*1.07 )
     
+    # sink rate branch from control: augment and diminish the total moisture sink rate
+
+    sinkp5 = define_experiment( control; name="sink+5%", 
+        description="sink rate +5%",
+        tot_sink=1.05*tot_sink,
+        control=false, a_i_control=a_i_control, M_i_control=M_i_control )
+
+    sinkm5 = define_experiment( control; name="sink-5%", 
+        description="sink rate -5%",
+        tot_sink=0.95*tot_sink,
+        control=false, a_i_control=a_i_control, M_i_control=M_i_control )
+
     # # "DIM" is exactly as "sfc(1-RH)-5%" above
     # DIM = define_experiment( cRHminus5pct; name="DIM", 
     #     description="Descent Inhibited Moisture Flux; sfc(1-RH)-5%, E_cb+2%, q&qs+7%, subsidence-5%" )
@@ -229,7 +241,10 @@ function define_experiments(; ctx::ModelContext)
         "q&qs+7%" => qplus7pct,
         "Ecb+2%" => ecbplus2pct,
         "lclRH+0.003" => lclRHplusp003,
-        "lclRH+0.006" => lclRHplusp006    )
+        "lclRH+0.006" => lclRHplusp006,
+        "sink+5%" => sinkp5,
+        "sink-5%" => sinkm5
+    )
 end
 
 # use define_experiment to define a new experiment exactly like the control, but with a new sink rate array sinkz
