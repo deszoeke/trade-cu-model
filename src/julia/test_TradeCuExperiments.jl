@@ -176,13 +176,24 @@ end
 plot_exp_vs_control(ExpDict["control"], ExpDict["sink-5%"], ExpDict["sink+5%"], 
     :ztop; f=(x->x*1e-3))
 plot([0.7, 3.5], [0.7, 3.5], "k-", linewidth=0.5, label="1:1")
-ylim([0.7, 3.2]); xlim([0.7, 3.2])
+ylim([0.7, 3.2]); xlim([0.7, 3.2]) # not affected by flux distribution
 
 plot_exp_vs_control(ExpDict["control"], ExpDict["sink-5%"], ExpDict["sink+5%"], 
     :M; f=(M->M[71,:]) ) # ack
 
 plot_exp_vs_control(ExpDict["control"], ExpDict["sink-5%"], ExpDict["sink+5%"], 
     :acld; linestyle="none", marker=".", markersize=1 )
+
+# print readable table for sink rate experiments
+begin
+    println("cloud fraction, % change from control")
+    println(@sprintf("%-15s | %10s", "experiment", "dlna")) # interpolating to ztop
+    println("-"^30)
+    for exp in ["control", "sink-5%", "sink+5%"]
+        println(@sprintf("%-15s | %10.2f", exp, 
+            100*dlna(   ExpDict[exp], ExpDict["control-sink"]) ) )
+    end
+end
 
 # print readable table for E2 sink rate experiments
 begin
