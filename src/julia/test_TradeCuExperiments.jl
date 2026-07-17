@@ -54,6 +54,8 @@ function good_sinks(controlsink; zb=700.0, zt=4000.0)
 end
 ztop, sinkz, acc, acld = good_sinks(controlsink);
 
+# deprecate control-sink and DIMsink experiments.
+
 # DIM experiments with different sink rates, to simulate mesoscale organization changes
 DIMsink = define_experiment(controlsink; 
     name="DIMsink", description="DIM sink rate, cloud tops align with z grid",
@@ -144,9 +146,43 @@ open("cloud_frac_table.txt", "w") do io
         end
     end
 end
+# Inverse dependence of mass flux on Δq, M = G/(Δq) 
+# increases Δq and decreases M = a*w and thus cloud fraction.
 
-# Inverse dependence of mass flux on Δq, M = G/(Δq) is key,
-# so that increasing Δq decreases M = a*w and thus cloud fraction.
+# mesoscale organization experiments with different sink rates
+# cloud tops lie on the same curve when plotted vs sink rate
+plot(ExpDict["control"].input.tot_sink*1e3, ExpDict["control"].output.ztop/1e3)
+plot(ExpDict["sink+5%"].input.tot_sink*1e3, ExpDict["sink+5%"].output.ztop/1e3)
+plot(ExpDict["sink-5%"].input.tot_sink*1e3, ExpDict["sink-5%"].output.ztop/1e3)
+clf() # plot vs. category subscripts - shifts same height clouds to different sink rates
+plot( ExpDict["control"].output.ztop/1e3)
+plot( ExpDict["sink+5%"].output.ztop/1e3)
+plot( ExpDict["sink-5%"].output.ztop/1e3)
+
+Experiment = TradeCuModel.Experiment
+function plot_exp_vs_control(c::Experiment, e1::Experiment, e2::Experiment, var::Symbol; f=identity, kwargs...)
+    cvar = f(getfield(c.output, var))
+    e1var = f(getfield(e1.output, var))
+    e2var = f(getfield(e2.output, var))
+
+    clf() # plot experiment vs control cloud top heights
+    plot( cvar, e1var, label=e1.name; kwargs...)
+    plot( cvar, e2var, label=e2.name; kwargs...)
+    xlabel("control"); ylabel("experiment")
+    legend(frameon=false)
+    return gcf()
+end
+
+plot_exp_vs_control(ExpDict["control"], ExpDict["sink-5%"], ExpDict["sink+5%"], 
+    :ztop; f=(x->x*1e-3))
+plot([0.7, 3.5], [0.7, 3.5], "k-", linewidth=0.5, label="1:1")
+ylim([0.7, 3.2]); xlim([0.7, 3.2])
+
+plot_exp_vs_control(ExpDict["control"], ExpDict["sink-5%"], ExpDict["sink+5%"], 
+    :M; f=(M->M[71,:]) ) # ack
+
+plot_exp_vs_control(ExpDict["control"], ExpDict["sink-5%"], ExpDict["sink+5%"], 
+    :acld; linestyle="none", marker=".", markersize=1 )
 
 # print readable table for E2 sink rate experiments
 begin

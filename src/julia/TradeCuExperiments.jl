@@ -220,13 +220,13 @@ function define_experiments(; ctx::ModelContext)
 
     sinkp5 = define_experiment( control; name="sink+5%", 
         description="sink rate +5%",
-        tot_sink=1.05*tot_sink,
-        control=false, a_i_control=a_i_control, M_i_control=M_i_control )
+        tot_sink=1.05*tot_sink, # cloud top height depends only on cloud model
+        control=true )          # redistributes a_i and M_i to match G(z)
 
     sinkm5 = define_experiment( control; name="sink-5%", 
         description="sink rate -5%",
         tot_sink=0.95*tot_sink,
-        control=false, a_i_control=a_i_control, M_i_control=M_i_control )
+        control=true ) # forces redistribution of a_i and M_i to match G(z)
 
     # # "DIM" is exactly as "sfc(1-RH)-5%" above
     # DIM = define_experiment( cRHminus5pct; name="DIM", 
