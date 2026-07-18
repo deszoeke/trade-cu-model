@@ -101,7 +101,7 @@ end
 totcld(e) =  sum(filter(isfinite,skipmissing(e.output.acld)))
 # totcld(ExpDict["control-sink"]), totcld(ExpDict["DIMsink"]), totcld(ExpDict["DIMsink-5%"]), totcld(ExpDict["DIMsink+5%"])
 dlna(e,c) = log(totcld(e)/totcld(c))
-function dlna_samelevs(e,c) 
+function dlna_sameinds(e,c) 
     ii = good.(e.output.acld) .& good.(c.output.acld)
     log(sum(e.output.acld[ii])/sum(c.output.acld[ii]))
 end
@@ -111,23 +111,26 @@ function dlna_limit_index(e,c)
     totcld(e) =  sum(filter(isfinite,skipmissing(e.output.acld[ik])))
     log(totcld(e)/totcld(c))
 end
-function dlna_limit_ztop(e,c) # do not go above the highest control cloud top height
+function dlna_limit_ztop(e,c) # do not go above the highest experiment or control cloud top height
     ik = findall(x-> !ismissing(x) && isfinite(x), c.output.ztop)
-    mz = maximum(c.output.ztop[ik])
-    ij = findall(x-> !ismissing(x) && isfinite(x) && x<=mz, e.output.ztop)
+    ij = findall(x-> !ismissing(x) && isfinite(x), e.output.ztop)
+    im = min(ik,ij)
     # println("max ztop for control = $(mz/1e3) km, max ztop for experiment = $(maximum(e.output.ztop[ij])/1e3) km")
-    log(sum(e.output.acld[ij])/sum(c.output.acld[ik]))
+    log(sum(e.output.acld[im])/sum(c.output.acld[im]))
 end
 
 """
 dlna_itp_ztop(e,c)   interpolate at max control.output.ztop
-compares the same valid cloud levels as for the control experiment
+compares the same valid cloud levels as the highes valid cloud top
+in the control AND the experiment.
 """
 function dlna_itp_ztop(e,c)
     ik = findall(x-> !ismissing(x) && isfinite(x), c.output.ztop)
-    mz = maximum(c.output.ztop[ik])
-    ca = sum(c.output.acld[ik])
     ij = findall(x-> !ismissing(x) && isfinite(x), e.output.ztop)
+    mz = min(maximum(c.output.ztop[ik]), maximum(e.output.ztop[ij]))
+    ca = TradeCuModel.interpolate_ascending(
+        coalesce.(c.output.ztop[ik],NaN), 
+        cumsum(coalesce.(c.output.acld[ik],NaN)) )(mz)
     ea = TradeCuModel.interpolate_ascending(
         coalesce.(e.output.ztop[ij],NaN), 
         cumsum(coalesce.(e.output.acld[ij],NaN)) )(mz)
@@ -151,13 +154,13 @@ end
 
 # mesoscale organization experiments with different sink rates
 # cloud tops lie on the same curve when plotted vs sink rate
-plot(ExpDict["control"].input.tot_sink*1e3, ExpDict["control"].output.ztop/1e3)
-plot(ExpDict["sink+5%"].input.tot_sink*1e3, ExpDict["sink+5%"].output.ztop/1e3)
-plot(ExpDict["sink-5%"].input.tot_sink*1e3, ExpDict["sink-5%"].output.ztop/1e3)
-clf() # plot vs. category subscripts - shifts same height clouds to different sink rates
-plot( ExpDict["control"].output.ztop/1e3)
-plot( ExpDict["sink+5%"].output.ztop/1e3)
-plot( ExpDict["sink-5%"].output.ztop/1e3)
+# plot(ExpDict["control"].input.tot_sink*1e3, ExpDict["control"].output.ztop/1e3)
+# plot(ExpDict["sink+5%"].input.tot_sink*1e3, ExpDict["sink+5%"].output.ztop/1e3)
+# plot(ExpDict["sink-5%"].input.tot_sink*1e3, ExpDict["sink-5%"].output.ztop/1e3)
+# clf() # plot vs. category subscripts - shifts same height clouds to different sink rates
+# plot( ExpDict["control"].output.ztop/1e3)
+# plot( ExpDict["sink+5%"].output.ztop/1e3)
+# plot( ExpDict["sink-5%"].output.ztop/1e3)
 
 Experiment = TradeCuModel.Experiment
 function plot_exp_vs_control(c::Experiment, e1::Experiment, e2::Experiment, var::Symbol; f=identity, kwargs...)
@@ -193,9 +196,14 @@ begin
     println("cloud fraction, % change from control")
     println(@sprintf("%-15s | %10s", "experiment", "dlna")) # interpolating to ztop
     println("-"^30)
-    for exp in ["control", "sink-5%", "sink+5%"]
+    for exp in ["sink-5%", "sink+5%"]
+        # println(@sprintf("%-15s | %10.2f", exp, 
+        #     100*dlna( ExpDict[exp], ExpDict["control"]) ) )
         println(@sprintf("%-15s | %10.2f", exp, 
-            100*dlna(   ExpDict[exp], ExpDict["control-sink"]) ) )
+            100*dlna_sameinds( ExpDict[exp], ExpDict["control"]) ) )
+        # println(@sprintf("%-15s | %10.2f", exp, 
+        #     100*dlna_itp_ztop( ExpDict[exp], ExpDict["control"]) ) )
+        # clouds up to the same heights have the same cloud fraction.
     end
 end
 
@@ -208,7 +216,7 @@ begin
     println("-"^30)
     for exp in ["DIMsink", "DIMsink-5%", "DIMsink+5%"]
         println(@sprintf("%-15s | %10.2f", exp, 
-            100*dlna(   ExpDict[exp], ExpDict["control-sink"]) ) )
+            100*dlna_sameinds( ExpDict[exp], ExpDict["control-sink"]) ) )
     end
 end
 # interpolating to the original ztop gives very different results
@@ -226,6 +234,17 @@ font_settings = Dict(
 )
 matplotlib.rcParams.update(font_settings)
 
+clf()
+plot([0, sum(f0.(c.output.acld))], [0, sum(f0.(c.output.acld))], "k-", linewidth=0.5, label="control, a=$(round(100*sum(f0.(c.output.acld)), digits=1))%")
+let e = ExpDict["sink+5%"]
+    plot( cumsum(f0.(c.output.acld)), cumsum(Float64.(f0.(e.output.acld))), label="$(e.name), a=$(round(100*sum(f0.(e.output.acld)), digits=1))%")
+end
+let e = ExpDict["sink-5%"]
+    plot( cumsum(f0.(c.output.acld)), cumsum(Float64.(f0.(e.output.acld))), label="$(e.name), a=$(round(100*sum(f0.(e.output.acld)), digits=1))%")
+end
+ylabel("experiment")
+xlabel("control")
+legend(frameon=false)
 
 "plot effect of experiments on cloud fraction profiles"
 function plot_cld_tot_profs(expmts)
