@@ -177,6 +177,10 @@ plot_exp_vs_control(ExpDict["control"], ExpDict["sink-5%"], ExpDict["sink+5%"],
     :ztop; f=(x->x*1e-3))
 plot([0.7, 3.5], [0.7, 3.5], "k-", linewidth=0.5, label="1:1")
 ylim([0.7, 3.2]); xlim([0.7, 3.2]) # not affected by flux distribution
+title("cloud top height (km)")
+for f in ["png", "pdf", "svg"]
+    gcf().savefig("sink_expmt_ztop.$f")
+end
 
 plot_exp_vs_control(ExpDict["control"], ExpDict["sink-5%"], ExpDict["sink+5%"], 
     :M; f=(M->M[71,:]) ) # ack
