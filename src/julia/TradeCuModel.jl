@@ -820,7 +820,7 @@ get the fraction in each height interval:
   a_i[1] = cth_acc(zcb)       - cth_acc(ztop[1])      # interval [zcb, ztop[1]]
   a_i[k] = cth_acc(ztop[k-1]) - cth_acc(ztop[k])      # interval [ztop[k-1], ztop[k]]
 This conserves total cloud fraction when ztop values shift between experiments.
-Only called for control experiments (control=true in cloudflux_allsky).
+Only called for control experiments (control=true in integrate_experiment!).
 """
 function interp_a_i(ztop, cth_bin, cth_acc; zcb=700.0)
     a_i = fill(NaN, length(ztop))
