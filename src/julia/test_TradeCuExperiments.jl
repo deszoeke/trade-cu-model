@@ -199,6 +199,8 @@ begin
     end
 end
 
+# plot cumulative cloud fraction vs. cloud top height for mesoscale experiments
+
 # print readable table for E2 sink rate experiments
 begin
     println("cloud fraction, % change from control")
@@ -243,13 +245,16 @@ function plot_cld_tot_profs(expmts)
     return ax
 end
 
-expmts = ["control", "subsidence-5%", "q&qs+7%", "lclRH+0.00875", "lclRH+0.0175"]
+expmts = ["control", "subsidence-5%", "q&qs+7%", "lclRH+0.003", "lclRH+0.006"]
 fig = gcf(); fig.clf()
 ax = plot_cld_tot_profs(expmts)
 
-expmts = ["control-sink", "DIMsink", "DIMsink-5%", "DIMsink+5%"]
+expmts = ["control", "sink-5%", "sink+5%"]
 fig = gcf(); fig.clf()
 ax = plot_cld_tot_profs(expmts)
+# it's a bookkeeping difference that the cloud fraction increases slightly for
+# lower sink rates. Clouds lift for weaker sink rates and represent more of the
+# fluxes and cloud fraction.
 
 # plotting experiment structure unpackers and calculators
 unpack(v,e) = foldl(getfield, v; init=e)
