@@ -191,7 +191,7 @@ plot_exp_vs_control(ExpDict["control"], ExpDict["sink-5%"], ExpDict["sink+5%"],
 plot_exp_vs_control(ExpDict["control"], ExpDict["sink-5%"], ExpDict["sink+5%"], 
     :acld; linestyle="none", marker=".", markersize=1 )
 
-# print readable table for sink rate experiments
+# print readable table for sink rate experiments - deprecated
 begin
     println("cloud fraction, % change from control")
     println(@sprintf("%-15s | %10s", "experiment", "dlna")) # interpolating to ztop
@@ -283,7 +283,6 @@ f(x,y) = log(x/y)
 dlnM = multop(f, [:output, :M], ExpDict["DIMsink"], ExpDict["control-sink"]);
 
 # plotting functions for experiment output
-Experiment = TradeCuModel.Experiment # for dispatch
 
 "pcolormesh q::Matrix for experiment e"
 function plot_exp_var(e::Experiment, q::Matrix, ctx=ctx; ncolor=10, ax=nothing, kwargs...)
@@ -305,19 +304,20 @@ plot_exp_var(f, e::Experiment, var::Symbol, ctx=ctx; ax=nothing, kwargs...) = pl
 # plot Δq = qc-qm for surface (1-RH)-5% experiment
 dq_cld(e) = e.output.qc .- e.input.qm
 # expmts = ["control", "subsidence-5%", "q&qs+7%", "sfc(1-RH)-5%"]
-exp = "sfc(1-RH)-5%"
+exp = "lclRH+0.003"
 e = ExpDict[exp]
 c = ExpDict["control"]
 fig = gcf(); # fig.set_size_inches([5, 5]); 
 fig.clf()
 ax = fig.subplots(1, 1)
 qx = (100*log.(max.(0, dq_cld(e)./dq_cld(c)))); # % change in Δq relative to control
-qx[ctx.z .< ctx.zcb, :] .= NaN;
+qx[ctx.z .< ctx.zcb, :] .= NaN; # mask below cloud base
 for (i, zt) in enumerate(e.output.ztop); qx[ctx.z.>=zt.+10.0, i] .= NaN; end
-qx[qx.<1.0] .= NaN; qx[qx.>4.25] .= NaN;
-plot_exp_var(e, qx, ctx; ax=ax, cmap=get_cmap("BuPu", 13), vmin=1.0, vmax=4.25)
+# qx[qx.<1.0] .= NaN; qx[qx.>4.25] .= NaN;
+plot_exp_var(e, qx, ctx; ax=ax, cmap=get_cmap("BuPu", 13) ) #, vmin=1.0, vmax=4.25)
 ax.plot([0.7, 3.5], [0.7, 3.5], "k-", linewidth=0.5)
 ax.plot([0.7, 3.5], [0.7, 0.7], "k-", linewidth=0.5)
+ax.plot(c.output.ztop/1e3, e.output.ztop/1e3, "w-", linewidth=0.5, label="experiment cloud height")
 ax.set_title("\$d\$ln\$(q_c-q)\$ [%] for $(exp) - control")
 ax.set_ylabel("z coordinate (km)")
 ax.set_xlabel("cloud top height (km)")
@@ -343,6 +343,74 @@ for (i, exp) in enumerate(expmts)
 end
 fig.tight_layout()
 [ fig.savefig("experiment_cloud_vel_liquid.$f") for f in ["png", "pdf", "svg"] ]
+
+pd = permutedims
+
+"pcolormesh q::Matrix for experiment e as function of ztop"
+function plot_exp_var_ztop(e::Experiment, c::Experiment, q::Matrix, ctx=ctx; ncolor=10, ax=nothing, kwargs...)
+    q = coalesce.(q, NaN)
+    ax = isnothing(ax) ? gca() : ax
+    eztop = coalesce.(e.output.ztop, NaN)
+    cztop = coalesce.(c.output.ztop, NaN)
+    ii = findall(x-> 500.0<=x<=3500.0, ctx.z)
+    eii = findall(x-> !ismissing(x) && isfinite(x) && 500.0<=x<=3500.0, eztop)
+    cii = findall(x-> !ismissing(x) && isfinite(x) && 500.0<=x<=3500.0, cztop)
+    pcm = ax.pcolormesh(cztop[eii]/1e3, ctx.z[ii]/1e3,  q[ii,eii]; cmap=get_cmap("RdYlBu_r", ncolor), kwargs...)
+    ax.get_figure().colorbar(pcm, ax=ax)
+    ax.plot(cztop[cii]/1e3, e.output.acld[cii], "w-", linewidth=0.5, label="cloud_i fraction")
+    # ax.plot(cztop[cii]/1e3, eztop[eii]/1e3, "w-", linewidth=0.5, label="cloud_i fraction")
+    ax.plot([0.5, 3.5], [0.5, 3.5], "k-", linewidth=0.5)
+    ax.set_ylim([0.5, 3.5]); ax.set_xlim([0.5, 3.5]); ax.set_yticks([1.0, 2.0, 3.0],["1", "2", "3"])
+    ax.set_aspect("equal")
+end
+"pcolormesh an experiment output variable var"
+plot_exp_var_ztop(e::Experiment, c::Experiment, var::Symbol, ctx=ctx; ax=nothing, kwargs...) = plot_exp_var_ztop(e::Experiment, c::Experiment, getfield(e.output, var), ctx; ax=ax, kwargs...)
+plot_exp_var_ztop(f, e::Experiment, c::Experiment, var::Symbol, ctx=ctx; ax=nothing, kwargs...) = plot_exp_var_ztop(e::Experiment, c::Experiment, f.(getfield(e.output, var)), ctx; ax=ax, kwargs...)
+
+# redo for control sink experiments
+expmts = ["control", "sink-5%", "sink+5%"]
+fig = gcf(); fig.set_size_inches([9.6, 5]); fig.clf()
+axs = fig.subplots(2, 3)
+for (i, exp) in enumerate(expmts)
+    ax = axs[0, i-1]
+    plot_exp_var_ztop(ExpDict[exp], ExpDict["control"], 
+        :w, ctx; vmin=0.0, vmax=1.0, ax=ax)
+    ax.set_title(exp, size=14)
+    (i-1)%3 == 0 && ax.set_ylabel("cloud liquid (g/kg)\n\nexperiment height (km)", size=14)
+end
+for (i, exp) in enumerate(expmts)
+    ax = axs[1, i-1]
+    ql = 1e3*coalesce.(calc_ql(ExpDict[exp]), NaN)
+    ql[ql.<=0] .= NaN
+    plot_exp_var_ztop(ExpDict[exp], ExpDict["control"], 
+        ql, ctx; vmin=0.0,vmax=2.0, ax=ax)
+    ax.set_title(exp, size=14)
+    (i-1)%3 == 0 && ax.set_ylabel("cloud liquid (g/kg)\n\nexperiment height (km)", size=14)
+    ax.set_xlabel("control height (km)", size=14)
+end
+fig.tight_layout()
+[ fig.savefig("experiment_cloud_w_ql.$f") for f in ["png", "pdf", "svg"] ]
+
+# plot mass and moisture flux
+fig = gcf(); fig.set_size_inches([9.6, 5]); fig.clf()
+axs = fig.subplots(2, 3)
+for (i, exp) in enumerate(expmts)
+    ax = axs[0, i-1]
+    plot_exp_var_ztop(x->1e3*x,ExpDict[exp], ExpDict["control"], 
+        :M, ctx; vmin=0.0, vmax=1.0, ax=ax)
+    ax.set_title(exp, size=14)
+    (i-1)%3 == 0 && ax.set_ylabel("mass flux (10\$^{-3}\$ m/s)\n\nexperiment height (km)", size=14)
+end
+for (i, exp) in enumerate(expmts)
+    ax = axs[1, i-1]
+    plot_exp_var_ztop(x->1e3*x, ExpDict[exp], ExpDict["control"], 
+        :F_cld, ctx; vmin=0.0,vmax=2.0, ncolor=10, ax=ax)
+    ax.set_title(exp, size=14)
+    (i-1)%3 == 0 && ax.set_ylabel("in-cloud moisture flux\n(g/kg m/s)\nexperiment height (km)", size=14)
+    ax.set_xlabel("control height (km)", size=14)
+end
+fig.tight_layout()
+[ fig.savefig("experiment_cloud_M_F.$f") for f in ["png", "pdf", "svg"] ]
 
 
 """
