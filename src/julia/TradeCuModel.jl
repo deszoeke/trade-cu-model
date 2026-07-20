@@ -811,19 +811,18 @@ function compute_normalized_fluxes(tot_sink=tot_sink; x=x,
         itop = findcloudtop(ql,z; zcb=z[icb])
         if !isnothing(itop) && itop > 0
             ztop[ia] = z[itop] # ztop can be up to 20 km
-            if !deep_cloud(ql,z) # compute normalized flux profiles
+            if !deep_cloud(ql,z)
+                # compute normalized flux profiles with total flux F=1
                 Fp[:,ia] .= -precipflux_down( x, ae, ones(nz), ql, qt, qm, istart=itop, icb=icb, dz=dz )
                 Fp[(itop+1):end,ia] .= missing
+                # normalized fluxes: 1 = Fcld + Fp
                 # cloud updraft flux
                 #          =toteddy - precip
-                Fcld[:,ia] .= missing
                 Fcld[icb:itop,ia] .= 1.0 .- Fp[icb:itop,ia]
             end
         end
     end
-    # ScaledFcld = NormalizedFcld * F2z
-    # ScaledFp   = NormalizedFp   * F2z
-    Fcld, Fp # normalized by F2z
+    Fcld, Fp # normalized so that Fcld + Fp = 1.0 in cloud
 end
 
 """
