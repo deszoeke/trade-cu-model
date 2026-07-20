@@ -181,9 +181,9 @@ plot_exp_vs_control(ExpDict["control"], ExpDict["sink-5%"], ExpDict["sink+5%"],
 plot([0.7, 3.5], [0.7, 3.5], "k-", linewidth=0.5, label="1:1")
 ylim([0.7, 3.2]); xlim([0.7, 3.2]) # not affected by flux distribution
 title("cloud top height (km)")
-for f in ["png", "pdf", "svg"]
-    gcf().savefig("sink_expmt_ztop.$f")
-end
+# for f in ["png", "pdf", "svg"]
+#     gcf().savefig("sink_expmt_ztop.$f")
+# end
 
 plot_exp_vs_control(ExpDict["control"], ExpDict["sink-5%"], ExpDict["sink+5%"], 
     :M; f=(M->M[71,:]) ) # ack
@@ -192,6 +192,7 @@ plot_exp_vs_control(ExpDict["control"], ExpDict["sink-5%"], ExpDict["sink+5%"],
     :acld; linestyle="none", marker=".", markersize=1 )
 
 # print readable table for sink rate experiments - deprecated
+if false
 begin
     println("cloud fraction, % change from control")
     println(@sprintf("%-15s | %10s", "experiment", "dlna")) # interpolating to ztop
@@ -205,6 +206,7 @@ begin
         #     100*dlna_itp_ztop( ExpDict[exp], ExpDict["control"]) ) )
         # clouds up to the same heights have the same cloud fraction.
     end
+end
 end
 
 # plot cumulative cloud fraction vs. cloud top height for mesoscale experiments
@@ -234,6 +236,7 @@ font_settings = Dict(
 )
 matplotlib.rcParams.update(font_settings)
 
+f0(x) = good(x) ? x : 0
 clf()
 plot([0, sum(f0.(c.output.acld))], [0, sum(f0.(c.output.acld))], "k-", linewidth=0.5, label="control, a=$(round(100*sum(f0.(c.output.acld)), digits=1))%")
 let e = ExpDict["sink+5%"]
@@ -376,7 +379,7 @@ for (i, exp) in enumerate(expmts)
     plot_exp_var_ztop(ExpDict[exp], ExpDict["control"], 
         :w, ctx; vmin=0.0, vmax=1.0, ax=ax)
     ax.set_title(exp, size=14)
-    (i-1)%3 == 0 && ax.set_ylabel("cloud liquid (g/kg)\n\nexperiment height (km)", size=14)
+    (i-1)%3 == 0 && ax.set_ylabel("vertical velocity (m/s)\n\nexperiment height (km)", size=14)
 end
 for (i, exp) in enumerate(expmts)
     ax = axs[1, i-1]
