@@ -435,7 +435,7 @@ function precipflux_down(x, ae, F, ql, qt, qm; istart=maximum(findall(ql.>0))+1,
     return P # precip flux vector
 end
 
-
+#= deprecated
 # large-scale flux
 # calculate F2
 
@@ -465,6 +465,7 @@ function calcF2(G, rfv_acc, offset; sk)
     align2i(G) = G[offset.+eachindex(rfv_acc)] # dimension category_
     return calcF2_(align2i(G), rfv_acc; sk=sk) # inputs not aligned
 end
+=#
 
 """
 large-scale all-sky moisture flux profile total G_tot 
@@ -472,7 +473,7 @@ and partition G_i to cloud-top categories i.
 """
 function calc_G_allsky(ztop; z,
     E_cb, # W/m^2; just the cloud vapor flux
-    rhb_prate=8.88e-6, # kg/s
+    rhb_prate=8.88e-6, # kg/m^2/s
     divg, sfc_adv=1.7e-8,
     qm, rhoL,
     zi=4000.0, zcb=700.0 )
@@ -711,6 +712,7 @@ end
 # tot_sink = range(6.1716e-4, 5.8e-3, length=ns) # min tuned for x=0.53 to get the highest possible cloud top
 # tot_sink = range(6.3523e-4, 5.7e-3, length=ns) # min tuned for x=0.53 to get the highest possible cloud top
 
+#=
 "Compute clouds and fluxes for a single precipitation efficiency x and a range of sink rates tot_sink."
 function cloudflux_1x(tot_sink=tot_sink; x=x, 
     z, nz=length(z), dz=z[2]-z[1],
@@ -749,7 +751,7 @@ function cloudflux_1x(tot_sink=tot_sink; x=x,
     end
     ztop, Fcld, Fp, qtc
 end
-
+=#
 
 "cloud model. no fluxes, just ztop, qtc"
 function cloud_qt(tot_sink=tot_sink; x=x, 
@@ -845,7 +847,7 @@ function cloudflux_allsky(tot_sink=tot_sink; x=x,
     qm=qm, qs=qs, divg, sfc_adv, E_cb, rhoL,
     zi=4000.0, zcb=z[icb], icb=icb, qcb=qcb)
 
-    # compute clouds
+    # compute clouds (kg/kg)
     _, qtc = cloud_qt(tot_sink; x=x, z=z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, icb=icb, qcb=qcb)
 
     # find cloud top heights ztop for each sink rate
@@ -854,17 +856,21 @@ function cloudflux_allsky(tot_sink=tot_sink; x=x,
     # otherwise use a_i passed directly (control=false experiments)
 
     # compute all sky flux at cloud top heights for control simulation
+    # kg/kg m/s
     G_i, G_tot = calc_G_allsky(ztop; z=z, E_cb=E_cb, divg=divg, sfc_adv=sfc_adv,
         qm=qm, rhoL=rhoL, zi=zi, zcb=zcb)
 
-    # CHANGE order of opertations
-    # normalized fluxes -> Gcld -> M  -> only then in-cloud flux
     # compute normalized cloud and precip fluxes for each sink rate, (z,i)
     Ncld, Np = compute_normalized_fluxes(tot_sink; x=x, z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, qtc=qtc, icb=icb, qcb=qcb)
     Gcld = Ncld .* G_i'
     Gp   = Np   .* G_i'
+    # LATER compute in-cloud flux
+    # Fcld = G_i / a_i
+    # Fcld = Ncld .* F_i'
+    # Fp = Np .* F_i'
 
     # compute mass flux M for each cloud category i
+    # normalized fluxes -> Gcld -> M 
     dq = qtc .- qm
     M = convert(Matrix{Union{Missing,Float64}}, Gcld ./ dq)
     for i in axes(M,2) # blank out M above clouds
@@ -875,22 +881,8 @@ function cloudflux_allsky(tot_sink=tot_sink; x=x,
             M[ii,i] .= missing
         end
     end
-    # later use M ∝ a to get relative change in a (assuming constant w)
-
-    # DON'T compute in-cloud flux, w here!
-    # # compute in-cloud flux for each cloud category i
-    # ii = .!ismissing.(a_i) .&& a_i .> 0.0
-    # F_i = Vector{Union{Missing, Float64}}(missing, length(ztop))
-    # F_i[ii] = G_i[ii] ./ a_i[ii] # Vectors if flux i is uniform
-    # println("sum(isfinite, skipmissing(F_i)) = $(sum(isfinite, skipmissing(F_i),init=0))")
-
-    # # compute normalized cloud and precip fluxes for each sink rate, (z,i)
-    # # Ncld, Np = compute_normalized_fluxes(tot_sink; x=x, z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, qtc=qtc, icb=icb, qcb=qcb)
-    # # scale the normalized fluxes by the in-cloud flux F_i for each cloud category i
-    # Fcld = Ncld .* F_i'
-    # Fp = Np .* F_i'
+    # LATER use M ∝ a to get relative change in a (assuming constant w)
     
-    # # return ztop, Fcld, Fp, qtc, a_i, Gcld
     return ztop, Gcld, Gp, qtc, M
 end
 
@@ -900,7 +892,7 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     z = ctx.z
     dz = ctx.dz
 
-   ztop, Gcld, Gp, qc, M = cloudflux_allsky(exp.input.tot_sink; 
+    ztop, Gcld, Gp, qc, M = cloudflux_allsky(exp.input.tot_sink; 
         x=exp.input.x, z=z, nz=length(z), dz=z[2]-z[1],
         qm=exp.input.qm, qs=exp.input.qs,
         divg=exp.input.divg, sfc_adv=exp.input.sfc_adv,

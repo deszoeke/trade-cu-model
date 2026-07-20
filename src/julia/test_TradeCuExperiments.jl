@@ -415,6 +415,31 @@ end
 fig.tight_layout()
 [ fig.savefig("experiment_cloud_M_F.$f") for f in ["png", "pdf", "svg"] ]
 
+"sum flux over all categories" # just use G_cld
+tot_i_flux(e, v=:F_cld) = sum(f0, getfield(e.output, v) .* pd(e.output.acld), dims=2)
+
+# sum a flux over all categories
+fig = gcf(); fig.set_size_inches([9.6, 5]); fig.clf()
+ax = fig.add_subplot(1, 2, 1)
+# ax.plot(1e3*sum(f0, ExpDict["control"].output.G_cld, dims=2), ctx.z/1e3, label="control")
+# ax.plot(1e3*sum(f0, ExpDict["sink-5%"].output.G_cld, dims=2), ctx.z/1e3, label="sink-5%")
+# ax.plot(1e3*sum(f0, ExpDict["sink+5%"].output.G_cld, dims=2), ctx.z/1e3, label="sink+5%")
+ax.plot(-1e3*sum(f0, ExpDict["control"].output.G_pcp, dims=2), ctx.z/1e3, "--", label="control")
+ax.plot(-1e3*sum(f0, ExpDict["sink-5%"].output.G_pcp, dims=2), ctx.z/1e3, "--", label="sink-5%")
+ax.plot(-1e3*sum(f0, ExpDict["sink+5%"].output.G_pcp, dims=2), ctx.z/1e3, "--", label="sink+5%")
+ax.set_ylim([0.5, 3.5])
+ax.set_ylabel("height (km)")
+ax.set_xlabel("cloud moisture flux (g/kg m/s)")
+ax.legend(frameon=false)
+ax = fig.add_subplot(1, 2, 2)
+ax.plot(sum(f0, ExpDict["control"].output.M, dims=2), ctx.z/1e3, label="control")
+ax.plot(sum(f0, ExpDict["sink-5%"].output.M, dims=2), ctx.z/1e3, label="sink-5%")
+ax.plot(sum(f0, ExpDict["sink+5%"].output.M, dims=2), ctx.z/1e3, label="sink+5%")
+ax.set_ylim([0.5, 3.5])
+# ax.set_ylabel("height (km)")
+ax.set_xlabel("cloud mass flux (m/s)")
+fig.tight_layout()
+# [ fig.savefig("experiment_totali_cloud_M_F.$f") for f in ["png", "pdf", "svg"] ]   
 
 """
 power law on log-log plot
