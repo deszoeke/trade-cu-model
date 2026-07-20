@@ -40,6 +40,7 @@ using VaporSat # dev ../../deps/VaporSat
 export ExpDict # dictionary contains defined experiments
 export init_context, define_experiments, define_experiment
 export interp_sinkrate #, get_sinkrate
+export interp_cloudtop_height
 export integrate_experiment!
 # temporarily export more to experiment in outside environment
 export setup_experiments

@@ -26,6 +26,12 @@ elseif @isdefined(PyPlot) && @isdefined(PyCall)
     end
 end
 
+includet("TradeCuExperiments.jl")
+using .TradeCuExperiments
+
+pd = permutedims
+
+# set up plot defaults
 PythonPlot.matplotlib.rcParams["font.family"] = "sans-serif"
 PythonPlot.matplotlib.rcParams["font.sans-serif"] = ["Helvetica", "Arial", "OpenSans"]
 # make fonts bigger by mutating rcParams
@@ -38,11 +44,6 @@ font_settings = Dict(
     "legend.fontsize" => 14  # Legend text
 )
 matplotlib.rcParams.update(font_settings)
-
-includet("TradeCuExperiments.jl")
-using .TradeCuExperiments
-
-interp_cloudtop_height = TradeCuModel.interp_cloudtop_height # needed for plotting output
 
 # experiment with sink rate fixed by the control
 ctx, ExpDict, controlsink, sinkm5, sinkp5 = test_control_sink();
@@ -239,10 +240,10 @@ end
 
 clf()
 plot([0, sum(f0.(c.output.acld))], [0, sum(f0.(c.output.acld))], "k-", linewidth=0.5, label="control, a=$(round(100*sum(f0.(c.output.acld)), digits=1))%")
-let e = ExpDict["sink+5%"]
+let e = ExpDict["sink+5%"], c = ExpDict["control"]
     plot( cumsum(f0.(c.output.acld)), cumsum(Float64.(f0.(e.output.acld))), label="$(e.name), a=$(round(100*sum(f0.(e.output.acld)), digits=1))%")
 end
-let e = ExpDict["sink-5%"]
+let e = ExpDict["sink-5%"], c = ExpDict["control"]
     plot( cumsum(f0.(c.output.acld)), cumsum(Float64.(f0.(e.output.acld))), label="$(e.name), a=$(round(100*sum(f0.(e.output.acld)), digits=1))%")
 end
 ylabel("experiment")
@@ -325,7 +326,7 @@ ax.set_title("\$d\$ln\$(q_c-q)\$ [%] for $(exp) - control")
 ax.set_ylabel("z coordinate (km)")
 ax.set_xlabel("cloud top height (km)")
 fig.tight_layout()
-[ fig.savefig("experiment_dq.$f") for f in ["png", "pdf", "svg"] ];
+# [ fig.savefig("experiment_dq.$f") for f in ["png", "pdf", "svg"] ];
 
 # plot cloud w
 expmts = ["control-sink", "DIMsink", "DIMsink-5%"]
@@ -345,9 +346,7 @@ for (i, exp) in enumerate(expmts)
     ax.set_xlabel("cloud top height (km)")
 end
 fig.tight_layout()
-[ fig.savefig("experiment_cloud_vel_liquid.$f") for f in ["png", "pdf", "svg"] ]
-
-pd = permutedims
+# [ fig.savefig("experiment_cloud_vel_liquid.$f") for f in ["png", "pdf", "svg"] ]
 
 "pcolormesh q::Matrix for experiment e as function of ztop"
 function plot_exp_var_ztop(e::Experiment, c::Experiment, q::Matrix, ctx=ctx; ncolor=10, ax=nothing, kwargs...)
