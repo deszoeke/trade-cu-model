@@ -64,6 +64,7 @@ function init_context()
     dz = z[2] - z[1]
 
     rfv_nrm, rfv_acc, cth_bin = get_goes_cloud_data()
+    rho = mean(filter(isfinite, calc_rho.(tvm, pm)[z .<= ztop]))
     rhoL = mean(filter(isfinite, calc_rhoL.(tvm, pm)[z .<= ztop]))
 
     return ModelContext(
@@ -78,6 +79,7 @@ function init_context()
         zcb,
         zi,
         ztop,
+        rho,
         rhoL,
     )
 end
@@ -112,13 +114,14 @@ function setup_experiments(; ctx::ModelContext)
 
     #size(rfv_nrm), size(cth_bin) # (351,1)
 
+    rho  = ctx.rho
     rhoL = ctx.rhoL # 2.41e6 J/m^3
     E_cb = 180.0 # W/m^2; just the cloud vapor flux; E0 - 35?
     qcb = qs[findfirst(z .>= zcb)] # kg/kg; cloud base specific humidity
     ns = length(tot_sink)
     nz = length(z)
     return ( qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv,
-        tot_sink, cth_bin, rfv_acc, rfv_nrm, rhoL, ns, nz )
+        tot_sink, cth_bin, rfv_acc, rfv_nrm, rho, rhoL, ns, nz )
 end
 
 allocate_output(nz,ns) = ModelOutput( 
@@ -130,7 +133,7 @@ allocate_output(nz,ns) = ModelOutput(
 
 "define_experiment(...) initializes an experiment input from keywords and empty output"
 function define_experiment(; name, description, 
-    qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv, tot_sink, cth_bin, rfv_acc, rfv_nrm, 
+    qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv, tot_sink, cth_bin, rfv_acc, rfv_nrm,
     control=true, a_i_control=nothing, M_i_control=nothing)
     Experiment( name, description,
         ModelInput(qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv, tot_sink, cth_bin, rfv_acc, rfv_nrm, control, a_i_control, M_i_control),
@@ -163,8 +166,10 @@ end
 
 "initialize experiments with input parameters and empty output structures"
 function define_experiments(; ctx::ModelContext)
+
     ( qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv,
-        tot_sink, cth_bin, rfv_acc, rfv_nrm, rhoL, ns, nz ) = setup_experiments(ctx=ctx)
+      tot_sink, cth_bin, rfv_acc, rfv_nrm, 
+      rho, rhoL, ns, nz ) = setup_experiments(ctx=ctx)
       
     icb = findfirst(ctx.z .>= zcb) # cloud base index
 
@@ -180,6 +185,7 @@ function define_experiments(; ctx::ModelContext)
         qm=qm, qs=qs, zcb=zcb, qcb=qcb, E_cb=E_cb, x=x, divg=divg, sfc_adv=sfc_adv, tot_sink=tot_sink, 
         cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, 
         control=true, a_i_control=nothing, M_i_control=nothing )
+
     # integrate control to pass control a_i, M_i to experiments
     integrate_experiment!(control, ctx=ctx)
     # control a_i and M_i will scale a for experiments

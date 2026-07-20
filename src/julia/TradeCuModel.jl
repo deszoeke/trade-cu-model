@@ -38,7 +38,7 @@ export interp_sinkrate, interp_cloudtop_height
 export tmean, tstd
 export get_sounding_dataset, get_mean_soundings, get_goes_cloud_data
 export filt_rfv
-export virtual_temp, calc_rhoL, Lv, LvK
+export virtual_temp, calc_rho, calc_rhoL, Lv, LvK
 # export largescale_drying
 
 # utility functions; extend matplotlib
@@ -350,6 +350,7 @@ struct ModelContext
     zcb::Float64
     zi::Float64
     ztop::Float64
+    rho::Float64
     rhoL::Float64
 end
 
@@ -476,11 +477,22 @@ function calc_G_allsky(ztop; z,
     E_cb, # W/m^2; just the cloud vapor flux
     rhb_prate=8.88e-6, # kg/m^2/s
     divg, sfc_adv=1.7e-8,
-    qm, rhoL,
+    qm, rho, rhoL,
     zi=4000.0, zcb=700.0 )
 
+    # water flux units
+    # rhb_prate   kg m^-2 s^-1
+    # prate/ρ     kg/kg * m/s            <--
+    # E_cb        W/m^2 = J/m^2/s
+    # E_cb = ρ*L*<w'q'>
+    # E_cb/ρL     m/s * kg/kg            <--
+    # <w'q'>      m/s * kg/kg
+    # ρ*<w'q'>    kg / m^2 / s
+    # ρL*<w'q'>   J / m^2 / s = W / m^2
+    # G           kg/kg * m/s            <--
+
     # all-sky total flux at cloud base
-    G_cb = E_cb/rhoL - rhb_prate
+    G_cb = E_cb/rhoL - rhb_prate/rho
 
     nztop = length(ztop)
     nztop == 0 && return Float64[], Float64[]
@@ -845,7 +857,7 @@ end
 "partition the all-sky flux G_tot to cloud-top categories i using the cloud top height ztop from the cloud model."
 function cloudflux_allsky(tot_sink=tot_sink; x=x, 
     z, nz=length(z), dz=z[2]-z[1],
-    qm=qm, qs=qs, divg, sfc_adv, E_cb, rhoL,
+    qm=qm, qs=qs, divg, sfc_adv, E_cb, rho, rhoL,
     zi=4000.0, zcb=z[icb], icb=icb, qcb=qcb)
 
     # compute clouds (kg/kg)
@@ -859,7 +871,7 @@ function cloudflux_allsky(tot_sink=tot_sink; x=x,
     # compute all sky flux at cloud top heights for control simulation
     # kg/kg m/s
     G_i, G_tot = calc_G_allsky(ztop; z=z, E_cb=E_cb, divg=divg, sfc_adv=sfc_adv,
-        qm=qm, rhoL=rhoL, zi=zi, zcb=zcb)
+        qm=qm, rho=rho, rhoL=rhoL, zi=zi, zcb=zcb)
 
     # compute normalized cloud and precip fluxes for each sink rate, (z,i)
     Ncld, Np = compute_normalized_fluxes(tot_sink; x=x, z, nz=length(z), dz=z[2]-z[1], qm=qm, qs=qs, qtc=qtc, icb=icb, qcb=qcb)
@@ -897,7 +909,7 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
         x=exp.input.x, z=z, nz=length(z), dz=z[2]-z[1],
         qm=exp.input.qm, qs=exp.input.qs,
         divg=exp.input.divg, sfc_adv=exp.input.sfc_adv,
-        E_cb=exp.input.E_cb, rhoL=ctx.rhoL,
+        E_cb=exp.input.E_cb, rho=ctx.rho, rhoL=ctx.rhoL,
         zi=ctx.zi, zcb=exp.input.zcb,
         icb=findfirst(z.>=exp.input.zcb), qcb=exp.input.qcb) 
 
