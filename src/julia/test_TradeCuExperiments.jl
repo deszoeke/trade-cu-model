@@ -28,6 +28,16 @@ end
 
 PythonPlot.matplotlib.rcParams["font.family"] = "sans-serif"
 PythonPlot.matplotlib.rcParams["font.sans-serif"] = ["Helvetica", "Arial", "OpenSans"]
+# make fonts bigger by mutating rcParams
+font_settings = Dict(
+    "font.size" => 14,       # Base size
+    "axes.titlesize" => 18,  # Subplot titles
+    "axes.labelsize" => 16,  # X/Y labels
+    "xtick.labelsize" => 14, # X-axis numbers
+    "ytick.labelsize" => 14, # Y-axis numbers
+    "legend.fontsize" => 14  # Legend text
+)
+matplotlib.rcParams.update(font_settings)
 
 includet("TradeCuExperiments.jl")
 using .TradeCuExperiments
@@ -84,6 +94,8 @@ end
 
 # quick count of valid fields
 good(x) = !ismissing(x) && isfinite(x)
+f0(x) = good(x) ? x : 0
+
 function inventory(e)
     for f in fieldnames(typeof(e))
         v = getfield(e, f)
@@ -225,18 +237,6 @@ end
 # Clouds with weaker sink rates rise above the original ztop.
 # Stronger sink rates give missing clouds at original ztop.
 
-# make fonts bigger by mutating rcParams
-font_settings = Dict(
-    "font.size" => 14,       # Base size
-    "axes.titlesize" => 18,  # Subplot titles
-    "axes.labelsize" => 16,  # X/Y labels
-    "xtick.labelsize" => 14, # X-axis numbers
-    "ytick.labelsize" => 14, # Y-axis numbers
-    "legend.fontsize" => 14  # Legend text
-)
-matplotlib.rcParams.update(font_settings)
-
-f0(x) = good(x) ? x : 0
 clf()
 plot([0, sum(f0.(c.output.acld))], [0, sum(f0.(c.output.acld))], "k-", linewidth=0.5, label="control, a=$(round(100*sum(f0.(c.output.acld)), digits=1))%")
 let e = ExpDict["sink+5%"]
