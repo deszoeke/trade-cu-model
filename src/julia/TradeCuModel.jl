@@ -27,9 +27,10 @@ export mid, m2z, anom, runningmean, recursef, upsample1, upsample, ξ
 export ModelInput, ModelOutput, ModelContext, Experiment # types for experiment data
 export ddz, q_total, cloudflux!
 export precipflux_down!, precipflux_down, precipflux_down_sfc
-export calcF2
+# export cloudflux_1x # deprecated calculation path
+# export calcF2
 export calc_G_allsky
-export cloudflux_1x, cloudflux_allsky
+export cloudflux_allsky
 export integrate_experiment!
 export updraft_w_dq
 export dadsinkrate, find_contour!, interpolate_ascending, interpolate_descending
