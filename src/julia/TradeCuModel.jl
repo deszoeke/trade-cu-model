@@ -29,7 +29,7 @@ export ddz, q_total, cloudflux!
 export precipflux_down!, precipflux_down, precipflux_down_sfc
 # export cloudflux_1x # deprecated calculation path
 # export calcF2
-export calc_G_allsky
+export calc_G_allsky, calc_rho, calc_rhoL, Lv, LvK
 export cloudflux_allsky
 export integrate_experiment!
 export updraft_w_dq
@@ -163,8 +163,8 @@ KelvinCelsius=273.15 # K
 
 # Lv(T) = 2.501e6 + (Cpv-Cw) * T # Celsius
 "Lv(T) [J/kg] Latent heat of vaporization of water as a function of temperature [K]."
-Lv(T) = 2.501e6 + (Cpv-Cw) * (T-KelvinCelsius)
-LvK(T) = Lv(T-273.15)
+Lv(T) = 2.501e6 + (Cpv-Cw) * (T)
+LvK(T) = Lv(T-KelvinCelsius)
 
 """
 qv(p/ev) = Rd / (Rv * (p/ev + (Cp/Rv-1)))
@@ -216,8 +216,10 @@ dqsatdz_moistad(p,T) = dqsdT(p,T-KelvinCelsius) * -lapse_moist(T,p) # negative
 liqldfac(ql; rhoa_o_rhoL=0.001) = 1 - (1 - rhoa_o_rhoL) * ql
 Tliqld(Tv, ql; p=1e5, rhoa=p/(Rd*Tv)) = Tv * liqldfac(ql; rhoa_o_rhoL=rhoa/1000.0)
 
-calc_rho( T, p) = p/(Rd*T)
-calc_rhoL(T, p) = p/(Rd*T) * LvK(T) # should use Tv in p/(Rd*T) but T in LvK
+"compute density p/(Rd*T*(1+0.608*q))"
+calc_rho( T, p=101000.0, q=0.0) = p/(Rd*T*(1+0.608*q)) # kg/m^3
+"compute density times latent heat of vaporization p/(Rd*T*(1+0.608*q)) * Lv(T)"
+calc_rhoL(T, p=101000.0, q=0.0) = calc_rho(T, p, q) * LvK(T)
 # Tmean = mean(skipnan(tmean(:ta)[ds[:alt].<=ztop])) # 286.6K = mean Cu layer temperature
 # pmean = mean(skipnan(tmean(:p)[ds[:alt].<=ztop]))
 # rhoL = calc_rhoL(Tmean, pmean)
@@ -477,7 +479,7 @@ function calc_G_allsky(ztop; z,
     E_cb, # W/m^2; just the cloud vapor flux
     rhb_prate=8.88e-6, # kg/m^2/s
     divg, sfc_adv=1.7e-8,
-    qm, rho, rhoL,
+    qm, rho, rhoL, G_cb=nothing,
     zi=4000.0, zcb=700.0 )
 
     # water flux units
@@ -492,7 +494,9 @@ function calc_G_allsky(ztop; z,
     # G           kg/kg * m/s            <--
 
     # all-sky total flux at cloud base
-    G_cb = E_cb/rhoL - rhb_prate/rho
+    if isnothing(G_cb)
+        G_cb = E_cb/rhoL - rhb_prate/rho # 5e-5 kg/kg m/s about 5x the magnitude of the precipitation
+    end
 
     nztop = length(ztop)
     nztop == 0 && return Float64[], Float64[]
@@ -510,13 +514,18 @@ function calc_G_allsky(ztop; z,
     subsidence(z_; divg=divg, zi=zi) = -min(z_, zi) * divg
     "interpolate the derivative dq/dz at z_"
     ddz(z_, q=qm,z=z) = interpolate_ascending( z[1:end-1].+0.5*diff(z), diff(q) ./ diff(z) )(z_)
-    "analytic large-scale drying profile S_ls(z) = -w*dq/dz - 1.7e-8*(zdivg-z)/zdivg"
+    """
+    large-scale drying profile S_ls(z) = -w*dq/dz - 1.7e-8*(zdivg-z)/zdivg
+    kg/kg s^-1
+    """
     function largescale_drying(q, z_; divg=divg, sfc_adv=sfc_adv)
         zdivg = 4e3 # m; top height hardwired
         wdqdz = subsidence(z_; divg=divg, zi=zdivg) .* ddz(z_, q)
         -wdqdz - sfc_adv * max(0, (zdivg - z_) ./ zdivg) # advection increases to sfc_adv at surface
     end
-
+    "integral of large scale drying between z0 and z1 (kg/kg m/s)"
+    S_ls_dz(z0,z1) = ( largescale_drying(qm, z0; divg=divg, sfc_adv=sfc_adv) + 
+                       largescale_drying(qm, z1; divg=divg, sfc_adv=sfc_adv) ) * 0.5 * (z1-z0)
 
     # Total all-sky flux G with cloud-base boundary condition
     nztop = length(ztop)
@@ -524,9 +533,7 @@ function calc_G_allsky(ztop; z,
     G_tot = Array{Union{Float64, Missing}}(missing, nztop)
 
     ii = findall(valid)
-    iis = ii[sortperm(zt[ii])]
-    S_ls_dz(z0,z1) = ( largescale_drying(qm, z0, divg=divg, sfc_adv=sfc_adv) + 
-                       largescale_drying(qm, z1, divg=divg, sfc_adv=sfc_adv) ) * 0.5 * (z1-z0)
+    iis = ii[sortperm(zt[ii])] # indices of ztop
     # G_i is eddy flux converging between z_i - z_i-1
     # G_i(zcb) = 0.0 # at cloud base
     dG = similarmissing((length(iis),), Float64)
@@ -534,7 +541,7 @@ function calc_G_allsky(ztop; z,
     dG[2:end] = S_ls_dz.(zt[iis[1:end-1]], zt[iis[2:end]]) # subsequent clouds
     # G_tot is total all-sky eddy flux
     # G_tot(zcb) = G_cb
-    G_i[iis] = .-dG
+    G_i[iis] = -dG
     G_tot[iis] = G_cb .+ cumsum(dG)
 
     # Partition all-sky flux to cloud-top categories using cth_acc
