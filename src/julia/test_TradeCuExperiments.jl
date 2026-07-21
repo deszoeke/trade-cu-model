@@ -429,7 +429,7 @@ ax.plot(-sum(f0, ExpDict["sink-5%"].output.G_pcp, dims=2), ctx.z/1e3, linewidth=
 ax.plot(-sum(f0, ExpDict["sink+5%"].output.G_pcp, dims=2), ctx.z/1e3, linewidth=0.3, color="tab:orange", label="sink+5%")
 ax.set_ylim([0.5, 3.5])
 ax.set_ylabel("height (km)")
-ax.set_xlabel("\$G_{cld}, G_{pcp}\$(kg/kg m/s)\nall-sky cloud, precip moisture flux ")
+ax.set_xlabel("\$G_{cld},\$ \$G_{pcp}\$ (kg/kg m/s)\nall-sky cloud, precip moisture flux ")
 ax.legend(frameon=false)
 ax = fig.add_subplot(1, 2, 2)
 ax.plot(sum(f0, ExpDict["control"].output.M, dims=2), ctx.z/1e3, color="black", label="control")
@@ -437,7 +437,7 @@ ax.plot(sum(f0, ExpDict["sink-5%"].output.M, dims=2), ctx.z/1e3, color="tab:blue
 ax.plot(sum(f0, ExpDict["sink+5%"].output.M, dims=2), ctx.z/1e3, color="tab:orange", label="sink+5%")
 ax.set_ylim([0.5, 3.5])
 # ax.set_ylabel("height (km)")
-ax.set_xlabel("M (m/s)\ncloud mass flux ")
+ax.set_xlabel("\$M\$ (m/s)\ncloud mass flux ")
 fig.tight_layout()
 # [ fig.savefig("experiment_totali_cloud_G_M.$f") for f in ["png", "pdf", "svg"] ]   
 
