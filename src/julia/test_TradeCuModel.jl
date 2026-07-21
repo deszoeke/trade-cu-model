@@ -52,17 +52,20 @@ ctx = init_context()
 ( qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv,
         tot_sink, cth_bin, rfv_acc, rfv_nrm, rho, rhoL, ns, nz ) = setup_experiments(ctx=ctx)
 z = ctx.z
-ztop = collect(710.0:50:8000.0) # cloud-top height grid
-G_i, G_tot = calc_G_allsky(ztop; z=z, E_cb=rhb_evap, rhb_prate=rhb_prate+5,
-    divg=divg, sfc_adv=1.7e-8,
+ztop = collect(700.0:50:8000.0) # cloud-top height grid
+G_i, G_tot = calc_G_allsky(ztop; z=z, divg=divg,
     qm=qm, rho=rho, rhoL=rhoL, zcb=zcb)
 clf()
 subplot(1,2,1)
-plot(G_i/10, ztop/1e3)
+plot(G_i[2:end]/10, ztop[2:end]/1e3)
 xlabel("(kg/kg /s)\nall-sky eddy source ")
 ylabel("height (km)")
+ylim([0, 6])
 subplot(1,2,2)
-plot(G_tot, ztop/1e3)
+plot(G_tot[2:end], ztop[2:end]/1e3)
 xlabel("(kg/kg m/s)\nall-sky eddy flux G_tot")
 xlim([0, 7e-5])
+ylim([0, 6])
 tight_layout()
+
+# boundary condition G_cb is fairly irrelevant to the simulated cloud and precip fluxes.

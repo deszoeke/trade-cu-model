@@ -474,14 +474,19 @@ end
 """
 large-scale all-sky moisture flux profile total G_tot 
 and partition G_i to cloud-top categories i.
+Evaluate total LS flux G_tot(z) at ztop, so as to partition
+to cloud categories where G_i diverges at ztop_i.
 """
 function calc_G_allsky(ztop; z,
-    E_cb=182, # W/m^2; just the cloud vapor flux
-    rhb_prate=22, # W/m^2 > 0
-    divg, sfc_adv=1.7e-8,
+    E_cb=182,       # W/m^2; just the cloud vapor flux
+    rhb_prate=22,   # W/m^2 > 0
+    divg,
+    sfc_adv=2e-8,   # kg/kg /s
     qm, rho, rhoL,
     zi=4000.0, zcb=700.0 )
 
+    # boundary condition G_cb is fairly irrelevant to the simulated cloud and precip fluxes.
+    
     # water flux units
     # rhb_prate   kg m^-2 s^-1
     # prate/ρ     kg/kg * m/s            <--
