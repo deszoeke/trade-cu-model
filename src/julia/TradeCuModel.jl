@@ -980,7 +980,7 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
     exp.output.F_cld[:,da_ind] .= Fcld[:,da_ind]  # in-cloud moisture flux [z, sink rate]
     exp.output.F_pcp[:,da_ind] .= Fp[:,da_ind]
     exp.output.G_cld[:,da_ind] .= Gcld[:,da_ind] # all-sky cloud moisture flux [z, sink rate]
-    exp.output.G_pcp[:,da_ind] .= Gp[:,da_ind] .* a_i'
+    exp.output.G_pcp[:,da_ind] .= Gp[:,da_ind]
 
     return nothing
 end
