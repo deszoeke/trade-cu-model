@@ -421,15 +421,15 @@ tot_i_flux(e, v=:F_cld) = sum(f0, getfield(e.output, v) .* pd(e.output.acld), di
 fig = gcf(); fig.set_size_inches([9.6, 5]); 
 fig.clf()
 ax = fig.add_subplot(1, 2, 1)
-ax.plot( sum(f0, ExpDict["control"].output.G_cld, dims=2), ctx.z/1e3, color="black", label="control")
-ax.plot( sum(f0, ExpDict["sink-5%"].output.G_cld, dims=2), ctx.z/1e3, color="tab:blue", label="sink-5%")
-ax.plot( sum(f0, ExpDict["sink+5%"].output.G_cld, dims=2), ctx.z/1e3, color="tab:orange", label="sink+5%")
-ax.plot(-sum(f0, ExpDict["control"].output.G_pcp, dims=2), ctx.z/1e3, linewidth=0.3, color="black", label="control")
-ax.plot(-sum(f0, ExpDict["sink-5%"].output.G_pcp, dims=2), ctx.z/1e3, linewidth=0.3, color="tab:blue", label="sink-5%")
-ax.plot(-sum(f0, ExpDict["sink+5%"].output.G_pcp, dims=2), ctx.z/1e3, linewidth=0.3, color="tab:orange", label="sink+5%")
+ax.plot( 1e5*sum(f0, ExpDict["control"].output.G_cld, dims=2), ctx.z/1e3, color="black", label="control")
+ax.plot( 1e5*sum(f0, ExpDict["sink-5%"].output.G_cld, dims=2), ctx.z/1e3, color="tab:blue", label="sink-5%")
+ax.plot( 1e5*sum(f0, ExpDict["sink+5%"].output.G_cld, dims=2), ctx.z/1e3, color="tab:orange", label="sink+5%")
+ax.plot(-1e5*sum(f0, ExpDict["control"].output.G_pcp, dims=2), ctx.z/1e3, linewidth=0.3, color="black")
+ax.plot(-1e5*sum(f0, ExpDict["sink-5%"].output.G_pcp, dims=2), ctx.z/1e3, linewidth=0.3, color="tab:blue")
+ax.plot(-1e5*sum(f0, ExpDict["sink+5%"].output.G_pcp, dims=2), ctx.z/1e3, linewidth=0.3, color="tab:orange")
 ax.set_ylim([0.5, 3.5])
 ax.set_ylabel("height (km)")
-ax.set_xlabel("\$G_{cld},\$ \$G_{pcp}\$ (kg/kg m/s)\nall-sky cloud, precip moisture flux ")
+ax.set_xlabel("\$G_{cld},\$ \$G_{pcp}\$ (10\$^{-5}\$kg/kg m/s)\nall-sky cloud, precip moisture flux ")
 ax.legend(frameon=false)
 ax = fig.add_subplot(1, 2, 2)
 ax.plot(sum(f0, ExpDict["control"].output.M, dims=2), ctx.z/1e3, color="black", label="control")
@@ -440,6 +440,32 @@ ax.set_ylim([0.5, 3.5])
 ax.set_xlabel("\$M\$ (m/s)\ncloud mass flux ")
 fig.tight_layout()
 # [ fig.savefig("experiment_totali_cloud_G_M.$f") for f in ["png", "pdf", "svg"] ]   
+
+idx = round.(Int32, range(1; stop=600, length=15))
+fig = gcf(); fig.set_size_inches([9.6, 5]);
+fig.clf()
+ax = fig.add_subplot(1, 1, 1)
+ax.plot(ExpDict["control"].output.w[:,idx], ctx.z/1e3, linewidth=0.6, label="control")
+# ax.plot(ExpDict["sink-5%"].output.w[:,1:20:end], ctx.z/1e3, color="tab:blue", label="sink-5%")
+# ax.plot(ExpDict["sink+5%"].output.w[:,1:20:end], ctx.z/1e3, color="tab:orange", label="sink+5%")
+ax.set_ylim([0.6, 3.01])
+ax.set_xlabel("in-cloud vertical velocity (m/s)")
+ax.set_ylabel("height (km)")
+# [ fig.savefig("experiment_totali_cloud_w.$f") for f in ["png", "pdf", "svg"] ]   
+
+fig = gcf(); fig.set_size_inches([9.6, 5]);
+fig.clf()
+ax = fig.add_subplot(1, 1, 1)
+ax.plot(1e3*(ExpDict["control"].output.qc[:,idx].-ExpDict["control"].input.qm[:]), 
+    ctx.z/1e3, linewidth=1.0, color="tab:blue", label="control")
+ax.plot(1e3*max.(0, (ExpDict["control"].output.qc[:,idx].-ExpDict["control"].input.qs[:])), 
+    ctx.z/1e3, linewidth=0.6, color="tab:orange",label="control")
+ax.set_ylim([0.6, 3.02])
+ax.set_xlabel("cloud specific humidity \$q_c-q\$ (g/kg)")
+ax.set_ylabel("height (km)")
+# text(0, 1.5, "strong sink rate", fontsize=14)
+text(5, 1.5, "weak sink rate", fontsize=14)
+# [ fig.savefig("experiment_totali_cloud_qc.$f") for f in ["png", "pdf", "svg"] ] 
 
 """
 power law on log-log plot
