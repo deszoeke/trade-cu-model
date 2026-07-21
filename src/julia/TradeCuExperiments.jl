@@ -92,7 +92,8 @@ function setup_experiments(; ctx::ModelContext)
     ztop = ctx.ztop  # m  # top of cloud model integration domain
     zcb  = ctx.zcb   # m
     divg = 1.5e-6    # 1/s
-    sfc_adv = 1.7e-8 # 1/s; large-scale advective drying in subcloud layer
+    sfc_adv = 2.0e-8   # kg/kg /s; large-scale advective drying
+    # sfc_adv = 1.7e-8 # kg/kg /s; large-scale advective drying
     x = 0.53 # parameter precipitation efficiency
 
     # ensemble of sink rates
