@@ -476,10 +476,10 @@ large-scale all-sky moisture flux profile total G_tot
 and partition G_i to cloud-top categories i.
 """
 function calc_G_allsky(ztop; z,
-    E_cb, # W/m^2; just the cloud vapor flux
-    rhb_prate=8.88e-6, # kg/m^2/s
+    E_cb=182, # W/m^2; just the cloud vapor flux
+    rhb_prate=22, # W/m^2 > 0
     divg, sfc_adv=1.7e-8,
-    qm, rho, rhoL, G_cb=nothing,
+    qm, rho, rhoL,
     zi=4000.0, zcb=700.0 )
 
     # water flux units
@@ -494,9 +494,8 @@ function calc_G_allsky(ztop; z,
     # G           kg/kg * m/s            <--
 
     # all-sky total flux at cloud base
-    if isnothing(G_cb)
-        G_cb = E_cb/rhoL - rhb_prate/rho # 5e-5 kg/kg m/s about 5x the magnitude of the precipitation
-    end
+    G_cb = (E_cb - rhb_prate)/rhoL # 5e-5 kg/kg m/s about 5x the magnitude of the precipitation
+
 
     nztop = length(ztop)
     nztop == 0 && return Float64[], Float64[]
@@ -876,7 +875,7 @@ function cloudflux_allsky(tot_sink=tot_sink; x=x,
 
     # compute all sky flux at cloud top heights for control simulation
     # kg/kg m/s
-    G_i, G_tot = calc_G_allsky(ztop; z=z, E_cb=E_cb, divg=divg, sfc_adv=sfc_adv,
+    G_i, G_tot = calc_G_allsky(ztop; z=z, divg=divg, sfc_adv=sfc_adv,
         qm=qm, rho=rho, rhoL=rhoL, zi=zi, zcb=zcb)
 
     # compute normalized cloud and precip fluxes for each sink rate, (z,i)
