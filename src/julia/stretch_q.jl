@@ -72,35 +72,80 @@ clf()
 plot(qm*1e3,z/1e3)
 ylim([0, 6])
 
-x = log.(filt_q(qm)./maximum(f0,qm))
+qmax = maximum(f0,qm)
+x = log.(filt_q(qm)./qmax)
 plot(x,z/1e3)
+
+# discretize x = ln humidity for stretching
 discrx = 0:-0.05:-3.5
 discrz = interpolate_descending(x,z).(discrx)
+discrz[1] = z[findfirst(isfinite,qm)]
 
 plot(discrx, discrz)
 
 stretch(z; a=300) = z + a*sin(2*pi*z/6e3)
 stretch(z; a=300) = a*sqrt(sin(pi*z/6e3))
-# stretch by multiplying
-stretch(z; a=0.1) = a*max( 0, sin(pi*(z-700)/(4e3-700)) )
+# stretch below 4 km by multiplying
+stretch(z; zcb=700.0, zct=4000.0) = max( 0, sin(pi*(z-zcb)/(zct-zcb)) )
 
-clf()
-plot(discrx, discrz)
-# plot(discrx, discrz .+ stretch.(discrz))
-# plot(discrx, discrz .- stretch.(discrz))
-plot(discrx, @. discrz * (1 + 0.1*sin(pi*discrz/6e3)))
-plot(discrx, @. discrz * (1 - 0.1*sin(pi*discrz/6e3)))
+# clf()
+# plot(discrx, discrz)
+# plot(discrx, @. discrz * (1 + 0.1*sin(pi*discrz/6e3)))
+# plot(discrx, @. discrz * (1 - 0.1*sin(pi*discrz/6e3)))
 
 # stretch by multiplying
 clf()
 plot(exp.(discrx),    discrz )
-plot(exp.(discrx), @. discrz * (1 + 0.1*max(0, sin(pi*(discrz-700)/(4e3-700)))))
-plot(exp.(discrx), @. discrz * (1 - 0.1*max(0, sin(pi*(discrz-700)/(4e3-700)))))
+plot(exp.(discrx), @. discrz * (1 + 0.1*stretch(discrz)))
+plot(exp.(discrx), @. discrz * (1 - 0.1*stretch(discrz)))
 
 # look at derivatives
 clf()
-plot(diff(exp.(discrx))./diff(discrz),    discrz[2:end] )
-plot( diff(exp.(discrx))./diff(@. discrz * (1 + stretch(discrz))), 
-                              (@. discrz * (1 + stretch(discrz)))[2:end] )
-plot( diff(exp.(discrx))./diff(@. discrz * (1 - stretch(discrz))), 
-                              (@. discrz * (1 - stretch(discrz)))[2:end] )
+plot( diff(exp.(discrx))./diff(discrz),    discrz[2:end] )
+plot( diff(exp.(discrx))./diff(@. discrz * (1 + 0.1*stretch(discrz))), 
+                              (@. discrz * (1 + 0.1*stretch(discrz)))[2:end] )
+plot( diff(exp.(discrx))./diff(@. discrz * (1 - 0.1*stretch(discrz))), 
+                              (@. discrz * (1 - 0.1*stretch(discrz)))[2:end] )
+
+# reinterpolate discrx from stretched back to the original z grid
+xint = interpolate_ascending(discrz[2:end], discrx[2:end]).(z)
+xint = interpolate_ascending((@. discrz * (1.0 + 0.1*stretch(discrz)))[2:end], discrx[2:end]).(z) # z stretched up
+xint = interpolate_ascending((@. discrz * (1.0 - 0.1*stretch(discrz)))[2:end], discrx[2:end]).(z) # z stretched down
+
+# clf()
+plot(1e3*qmax*exp.(interpolate_ascending(discrz, discrx).(z)), z/1e3, "k", label="control")
+plot(1e3*qmax*exp.(interpolate_ascending((@. discrz * (1.0 + 0.1*stretch(discrz))), discrx).(z)), z/1e3, label="up")
+plot(1e3*qmax*exp.(interpolate_ascending((@. discrz * (1.0 - 0.1*stretch(discrz))), discrx).(z)), z/1e3, label="down")
+plot(1e3*qmax*exp.(interpolate_ascending(discrz, discrx).(z)), z/1e3, "k")
+ylim([0, 4]); xlim([0, 15]); 
+xlabel("q (g/kg)"); ylabel("z (km)")
+title("stretched humidity profiles")
+[ savefig("stretch_q.$(f)") for f in ["png", "pdf", "eps", "svg"] ]
+
+function stretch_humidity(qm, z; a=0.1)
+    qmax = maximum(f0,qm)
+    x = log.(filt_q(qm)./qmax)
+    # discretize x = ln humidity for stretching
+    discrx = 0:-0.05:-3.5
+    discrz = interpolate_descending(x,z).(discrx)
+    discrz[1] = z[findfirst(isfinite,qm)]
+    # reinterpolate discrx from stretched back to the original z grid
+    xint = interpolate_ascending((@. discrz * (1.0 + a*stretch(discrz))), discrx).(z) # z stretched up
+    return qmax*exp.(xint)
+end
+
+clf()
+plot((@. stretch(discrz)), discrz/1e3, color="tab:blue", label="up")
+# plot((@. 1.0 - 0.7*stretch(discrz)), discrz/1e3, color="tab:orange", label="down")
+plot(1e3*stretch_humidity(qm, z; a= 0.0), z/1e3, "k", label="control")
+plot(1e3*stretch_humidity(qm, z; a=+0.1), z/1e3, color="tab:blue", label="up")
+plot(1e3*stretch_humidity(qm, z; a=-0.1), z/1e3, color="tab:orange", label="down")
+plot(1e3*stretch_humidity(qm, z; a= 0.0), z/1e3, "k")
+ylim([0, 4]); xlim([0, 15]); 
+xlabel("q (g/kg)"); ylabel("z (km)")
+title("stretched humidity profiles")
+[ savefig("stretch_q.$(f)") for f in ["png", "pdf", "eps", "svg"] ]
+
+# A general way to make matching humidity and eddy flux profiles is to stretch/squash
+# qm, ztop, G, G_i, F_i. Areas a_i stay the same. 
+# Squashing increases and stretching decreasesthe sink rate α+ϵ.
