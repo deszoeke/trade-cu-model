@@ -76,8 +76,8 @@ Processes a single granule file. Allocates 100% clear space to a single scalar a
 while splitting subpixel cloud structures into the 2D joint matrix and 1D pressure profile.
 All trackers are modified strictly in place.
 """
-function update_isccp_accumulation!(
-    acc_sum_albedo::Vector{Float64},
+function update_albedo_accumulation!(
+    acc_profile_albedo::Float64,
     acc_cloudy::Matrix{Float64}, 
     acc_clear_profile::Vector{Float64}, 
     acc_clear_scalar::Vector{Float64}, # Single scalar inside a 1-element container
@@ -135,12 +135,15 @@ function update_isccp_accumulation!(
     # Accumulate footprint contents down the track
     for i in 1:file_valid_footprints
 
-        if !v_cloud[i] # clear
+        # --- BRANCH 1: Clear pixel — no valid retrieval ---
+        if !v_cloud[i]
             acc_clear_scalar[1] += 1.0
-        else           # cloud retrieval
-            acc_sum_albedo[1] += v_albedo[i]
-            p_bin = get_bin_index(v_pc[i], pc_edges)
-            if p_bin > 0
+
+        # --- BRANCH 2: Cloudy pixel — bin retrieved (tau, pc) into joint histogram ---
+        else
+            acc_profile_albedo += v_albedo[i]
+            h_bin = get_bin_index(v_pc[i], pc_edges)
+            if h_bin > 0
                 tau_bin = get_bin_index(v_tau[i], tau_edges)
                 if tau_bin > 0
                     acc_cloudy[p_bin, tau_bin] += 1.0
@@ -162,7 +165,7 @@ function compile_isccp_histogram(lat_bounds, lon_bounds, data_file_list)
     pc_edges = reverse(float([1000, 800, 680, 560, 440, 310, 180, 50]))
 
     # --- PREALLOCATE ACCUMULATORS ---
-    albedo_mean_accumulator = zeros(Float64, 1)
+    albedo_mean_accumulator = 0.0
     isccp_cloudy_accumulator = zeros(Float64, 7, 7)
     isccp_clear_profile_acc  = zeros(Float64, 7)
     global_clear_pixel_counter = zeros(Float64, 1) # Single explicit scalar counter for completely clear space
@@ -218,7 +221,7 @@ data_file_list = filter(daylight_file, readdir(joinpath(datadir, "GOES/all"))) #
 # 4. NORMALIZATION FOR RAD KERNELS
 # ==============================================================================
 denom = global_total_footprints[1]
-albedo_mean = albedo_mean_accumulator[1] / denom
+albedo_mean = albedo_mean_accumulator / denom
 
 # histogram percentage matrices
 isccp_cloudy_histogram_pct = (isccp_cloudy_accumulator ./ denom) .* 100.0
