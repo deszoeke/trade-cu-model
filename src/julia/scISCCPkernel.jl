@@ -44,7 +44,8 @@ datadir = "../../../ATOMIC_GOES/data/"
 #     return clamp((alpha_obs - alpha_surface) / (alpha_cloud - alpha_surface), 0.0, 1.0)
 # end
 
-# radiative functions for cloud optical thickness
+# radiative functions for cloud optical thickness and albedo
+
 """
 asymmetry parameter for the scattering phase function of cloud droplets, 
 as a function of effective radius (microns)
@@ -197,21 +198,6 @@ function load_zelinka_kernel( kernel_file=joinpath(datadir, "obs_cloud_kernels4.
     end
 end
 
-# not used:
-# function compute_zelinka_feedback(
-#     dR_cloudy::Matrix{Float64}, 
-#     dR_clear_prof::Vector{Float64}, 
-#     dR_clear_scalar::Float64,
-#     K_sw_cloudy, 
-#     K_lw_cloudy )
-    
-#     # 1. Component sums from the subpixel profiles
-#     sw_cloudy = sum(dR_cloudy .* K_sw_cloudy)
-#     lw_cloudy = sum(dR_cloudy .* K_lw_cloudy)
-    
-#     return (SW=sw_cloudy, LW=sw_cloudy, NET=total_sw + total_lw)
-# end
-
 # ==============================================================================
 # 3. ENVIRONMENT STATE PREALLOCATION
 # ==============================================================================
@@ -251,8 +237,9 @@ println("Regional mean albedo: ", round(albedo_mean, digits=3))
 # ncgen -o shcu_isccp_cloud_pct.nc shcu_isccp_cloud_pct.cdl
 # copy the variables we want
 # ncks -A -C -v plev_bnds,tau_bnds,plev,tau obs_cloud_kernels4.nc shcu_isccp_cloud_pct.nc
-NCDatasets.Dataset(joinpath(datadir, "shcu_isccp_cloud_pct3.nc"), "a") do ihd
+NCDatasets.Dataset(joinpath(datadir, "shcu_isccp_cloud_pct4.nc"), "a") do ihd
     # write the cloud histogram data
+    ihd["albedo"][1]           = albedo_mean
     ihd["cloud_hist"][:,:]    .= isccp_cloudy_histogram_pct
     ihd["clear_prof"][:]      .= isccp_clear_profile_pct
     ihd["clear_pixel_frac"][1] = total_domain_clear_sky_pct
