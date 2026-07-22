@@ -44,23 +44,39 @@ datadir = "../../../ATOMIC_GOES/data/"
 #     return clamp((alpha_obs - alpha_surface) / (alpha_cloud - alpha_surface), 0.0, 1.0)
 # end
 
+# radiative functions for cloud optical thickness
+"""
+asymmetry parameter for the scattering phase function of cloud droplets, 
+as a function of effective radius (microns)
+"""
+asym_parameter(r_e) = 0.823 + 0.0035 * r_e
+asym_parameter_kernel = asym_parameter(10.0) # 0.858 for 10 micron effective radius
+tau_fac(r_e) = (1-asym_parameter(r_e)) / (1-asym_parameter_kernel)
+calc_tau_scaled(r_e, tau) = tau * tau_fac(r_e)
+"albedo asymptotically matching radiative calculations of kernel"
+function albedo_kernel(r_e, tau_scaled)
+    omgts = (1-asym_parameter(r_e)) * tau_scaled
+    omgts / (2 + omgts)
+end
+
+
 function get_bin_index(value, edges)
     if isnan(value) || value < edges[1] || value > edges[end] return 0 end
     return searchsortedlast(edges, value)
 end
 
 # ==============================================================================
-# 2. FUNCTIOMS TO ACCUMULATE PIXELS IN-PLACE 
+# 2. FUNCTIONS TO ACCUMULATE PIXELS IN-PLACE 
 # ==============================================================================
 
 """
     update_isccp_accumulation!(acc_cloudy, acc_clear_profile, acc_clear_scalar, global_denominator, nc_file, ...)
-    
 Processes a single granule file. Allocates 100% clear space to a single scalar accumulator,
 while splitting subpixel cloud structures into the 2D joint matrix and 1D pressure profile.
 All trackers are modified strictly in place.
 """
 function update_isccp_accumulation!(
+    acc_sum_albedo::Float64,
     acc_cloudy::Matrix{Float64}, 
     acc_clear_profile::Vector{Float64}, 
     acc_clear_scalar::Vector{Float64}, # Single scalar inside a 1-element container
@@ -69,7 +85,9 @@ function update_isccp_accumulation!(
     lat_bounds::Tuple{Float64, Float64},
     lon_bounds::Tuple{Float64, Float64},
     tau_edges::Vector{T},
-    pc_edges::Vector{T} ) where T <: Real
+    pc_edges::Vector{T};
+    vza_thr = 60.0, 
+    sza_thr = 60.0 ) where T <: Real
 
     if !isfile(nc_file)
         println("Warning: file not found: ", nc_file)
@@ -85,11 +103,15 @@ function update_isccp_accumulation!(
     lons            = coalesce.(ds["longitude"][:,:], NaN32)
     reflectance_vis = coalesce.(ds["reflectance_vis"][:,:], NaN32)
     tau             = coalesce.(ds["cloud_visible_optical_depth"][:,:], NaN32)
+    particle_size   = coalesce.(ds["cloud_particle_size"][:,:], NaN32)
     pixel_sza       = coalesce.(ds["pixel_sza"][:,:], NaN32)
     pixel_vza       = coalesce.(ds["pixel_vza"][:,:], NaN32)
     pc              = coalesce.(ds["cloud_top_pressure"][:,:], NaN32)
 
     close(ds)
+
+    tau_scaled = calc_tau_scaled.(particle_size, tau)
+    albedo = albedo_kernel.(particle_size, tau_scaled)
 
     # ISCCP-consistent binary classification: cloudy if retrieval produced a valid tau
     cloud_mask = .!isnan.(tau) .& (tau .> 0.0)
@@ -97,12 +119,14 @@ function update_isccp_accumulation!(
     # Universal geographic / solar zenith condition mask
     spatial_mask = (lats .>= lat_min) .& (lats .<= lat_max) .& 
                    (lons .>= lon_min) .& (lons .<= lon_max) .&
-                   (pixel_vza .<= 60.0) .& (pixel_sza .<= 60.0) .& 
+                   (pixel_vza .<= vza_thr) .& (pixel_sza .<= sza_thr) .& 
                    (.!isnan.(reflectance_vis))
 
+    # valid subsets
     v_cloud = cloud_mask[spatial_mask]
     v_pc    = pc[spatial_mask]
-    v_tau   = tau[spatial_mask]
+    v_tau   = tau_scaled[spatial_mask]
+    v_albedo = albedo[spatial_mask]
 
     file_valid_footprints = length(v_cloud)
     if file_valid_footprints == 0 return end
@@ -116,6 +140,7 @@ function update_isccp_accumulation!(
 
         # --- BRANCH 2: Cloudy pixel — bin retrieved (tau, pc) into joint histogram ---
         else
+            acc_sum_albedo += v_albedo[i]
             p_bin = get_bin_index(v_pc[i], pc_edges)
             if p_bin > 0
                 tau_bin = get_bin_index(v_tau[i], tau_edges)
@@ -139,6 +164,7 @@ function compile_isccp_histogram(lat_bounds, lon_bounds, data_file_list)
     pc_edges = reverse(float([1000, 800, 680, 560, 440, 310, 180, 50]))
 
     # --- PREALLOCATE ACCUMULATORS ---
+    albedo_mean_accumulator = 0.0
     isccp_cloudy_accumulator = zeros(Float64, 7, 7)
     isccp_clear_profile_acc  = zeros(Float64, 7)
     global_clear_pixel_counter = zeros(Float64, 1) # Single explicit scalar counter for completely clear space
@@ -147,6 +173,7 @@ function compile_isccp_histogram(lat_bounds, lon_bounds, data_file_list)
     # Run state ingestion loop sequence
     for file in data_file_list
         update_isccp_accumulation!(
+            albedo_mean_accumulator,
             isccp_cloudy_accumulator, 
             isccp_clear_profile_acc,
             global_clear_pixel_counter,
@@ -156,10 +183,9 @@ function compile_isccp_histogram(lat_bounds, lon_bounds, data_file_list)
             lon_bounds, 
             tau_edges, 
             pc_edges )
-
     end
 
-    return (isccp_cloudy_accumulator, isccp_clear_profile_acc, global_clear_pixel_counter, global_total_footprints)
+    return (albedo_mean_accumulator, isccp_cloudy_accumulator, isccp_clear_profile_acc, global_clear_pixel_counter, global_total_footprints)
 end
 
 # ZELINKA FEEDBACK KERNEL FUNCTIONS
@@ -198,7 +224,8 @@ daylight_file(s) = 1200 <= parse(Int,match(r"(\d{4})\.PX\.02K\.NC$", s).captures
 data_file_list = filter(daylight_file, readdir(joinpath(datadir, "GOES/all"))) # [1:3]
 
 # Compile the ISCCP histograms across the domain track
-(   isccp_cloudy_accumulator, 
+(   albedo_mean_accumulator,
+    isccp_cloudy_accumulator, 
     isccp_clear_profile_acc, 
     global_clear_pixel_counter, 
     global_total_footprints ) = compile_isccp_histogram(
@@ -208,6 +235,7 @@ data_file_list = filter(daylight_file, readdir(joinpath(datadir, "GOES/all"))) #
 # 4. NORMALIZATION FOR RAD KERNELS
 # ==============================================================================
 denom = global_total_footprints[1]
+albedo_mean = albedo_mean_accumulator / denom
 
 # histogram percentage matrices
 isccp_cloudy_histogram_pct = (isccp_cloudy_accumulator ./ denom) .* 100.0
@@ -216,6 +244,7 @@ total_domain_clear_sky_pct = (global_clear_pixel_counter / denom) * 100.0
 
 println("Total pixel count: ", denom)
 println("Regional pure clear pixel fraction: ", round(total_domain_clear_sky_pct[1], digits=2), " %")
+println("Regional mean albedo: ", round(albedo_mean, digits=3))
 
 # Save the histogram in a netcdf file.
 # first dump and edit the obs kernel cdl file, then
@@ -240,7 +269,7 @@ aa = 1   # searchsortedlast(albcs,0.05) # clear sky albedo approx 0
 tt = 1:2
 # K_sw_sc_cloudy = mean(K_sw_cloudy[tt,:,:,ll,aa], dims=(1,4)) |> dropdims
 # K_lw_sc_cloudy = mean(K_lw_cloudy[tt,:,:,ll   ], dims=(1,4)) |> dropdims
-K_sw_sc_cloudy = mean(K_sw_cloudy[aa, ll, :,:, tt], dims=(1,4))[1,:,:,1]
+K_sw_sc_cloudy = mean(K_sw_cloudy[aa, ll, :,:, tt], dims=(1,4))[1,:,:,1] # plev x tau
 K_lw_sc_cloudy = mean(K_lw_cloudy[    ll, :,:, tt], dims=(1,4))[1,:,:,1]
 # scale kernel bins by observed cloud fractions
 sw_cre_hist = isccp_cloudy_histogram_pct .* K_sw_sc_cloudy
