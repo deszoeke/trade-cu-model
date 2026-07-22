@@ -235,13 +235,13 @@ K_sw_cloudy, K_lw_cloudy = load_zelinka_kernel()
 # average kernels in Jan-Feb, lat_range, lon_range
 # SW(time, tau, plev, lat, albcs) 
 # netcdf structure reverses to (albcs, lat, plev, tau, time) in julia
-ll = 41 # searchsortedlast(lat,12.0)
-aa = 1 # searchsortedlast(albcs,0.05) # clear sky albedo approx 0
+ll = 42:43  # searchsortedfirst(lat,12.0):searchsortedlast(lat,16.5) # lat range for EUREC4A
+aa = 1   # searchsortedlast(albcs,0.05) # clear sky albedo approx 0
 tt = 1:2
 # K_sw_sc_cloudy = mean(K_sw_cloudy[tt,:,:,ll,aa], dims=(1,4)) |> dropdims
 # K_lw_sc_cloudy = mean(K_lw_cloudy[tt,:,:,ll   ], dims=(1,4)) |> dropdims
-K_sw_sc_cloudy = mean(K_sw_cloudy[aa, ll, :,:, tt], dims=3)
-K_lw_sc_cloudy = mean(K_lw_cloudy[    ll, :,:, tt], dims=3)
+K_sw_sc_cloudy = mean(K_sw_cloudy[aa, ll, :,:, tt], dims=(1,4))[1,:,:,1]
+K_lw_sc_cloudy = mean(K_lw_cloudy[    ll, :,:, tt], dims=(1,4))[1,:,:,1]
 # scale kernel bins by observed cloud fractions
 sw_cre_hist = isccp_cloudy_histogram_pct .* K_sw_sc_cloudy
 lw_cre_hist = isccp_cloudy_histogram_pct .* K_lw_sc_cloudy
