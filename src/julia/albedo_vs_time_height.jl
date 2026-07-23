@@ -411,6 +411,7 @@ let albedo_profile = lowrecmean(albedo_profile),
     xlabel("cumulative cloud amount (%)")
     xlim([-0.05, 25]); ylim([0, 4])
     legend(frameon=false)
+    suptitle("cloud albedo, reflectance, and pixel fraction profiles\n(daylight GOES 2020 Jan-Feb 12.5°N-16°N, 60°W-49°W)")
     tight_layout()
 end
 [ savefig(joinpath(datadir, "shcu_cloud_albedo_refl_profile.$f")) for f in ["png", "pdf", "svg", "eps" ] ]
