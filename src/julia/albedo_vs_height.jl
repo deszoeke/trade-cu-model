@@ -86,8 +86,11 @@ function update_albedo_profile!(
     nc_file::String,
     lat_bounds::Tuple{Float64, Float64},
     lon_bounds::Tuple{Float64, Float64},
-    vza_thr = 60.0, 
-    sza_thr = 60.0 )
+    vza_thr=75.0, 
+    sza_thr=75.0,
+    height_bins=0.0:10.0:4000.0 )
+
+    nh = length(height_bins)
 
     if !isfile(nc_file)
         println("Warning: file not found: ", nc_file)
@@ -97,32 +100,34 @@ function update_albedo_profile!(
     lat_min, lat_max = lat_bounds
     lon_min, lon_max = lon_bounds
 
-    ds = NCDatasets.Dataset(nc_file, "r")
-    
+    ds = NCDatasets.Dataset(nc_file, "r");
     lats            = coalesce.(ds["latitude"][:,:], NaN32)
     lons            = coalesce.(ds["longitude"][:,:], NaN32)
     reflectance_vis = coalesce.(ds["reflectance_vis"][:,:], NaN32)
     tau             = coalesce.(ds["cloud_visible_optical_depth"][:,:], NaN32)
+    # sw_albedo       = coalesce.(ds["broadband_shortwave_albedo"][:,:], NaN32)
     particle_size   = coalesce.(ds["cloud_particle_size"][:,:], NaN32)
     pixel_sza       = coalesce.(ds["pixel_sza"][:,:], NaN32)
     pixel_vza       = coalesce.(ds["pixel_vza"][:,:], NaN32)
-    # pc              = coalesce.(ds["cloud_top_pressure"][:,:], NaN32)
     cloud_height    = coalesce.(ds["cloud_top_height"][:,:], NaN32)
-
     close(ds)
 
     # radiative calculations for each pixel
     tau_scaled = calc_tau_scaled.(particle_size, tau)
-    albedo = albedo_kernel.(tau_scaled, pixel_sza, particle_size)
+    albedo = albedo_kernel.(tau_scaled, pixel_sza, particle_size) # cloud albedo
 
     # ISCCP-consistent binary classification: cloudy if retrieval produced a valid tau
     cloud_mask = .!isnan.(tau) .& (tau .> 0.0)
 
     # Universal geographic / solar zenith condition mask
-    spatial_mask = (lats .>= lat_min) .& (lats .<= lat_max) .& 
-                   (lons .>= lon_min) .& (lons .<= lon_max) .&
-                   (pixel_vza .<= vza_thr) .& (pixel_sza .<= sza_thr) .& 
-                   (.!isnan.(reflectance_vis))
+    spatial_mask = ( (lats .>= lat_min) .& (lats .<= lat_max) .& 
+                     (lons .>= lon_min) .& (lons .<= lon_max) .&
+                     (pixel_vza .<= vza_thr) .& (pixel_sza .<= sza_thr) .& 
+                     (.!isnan.(reflectance_vis)) .& (.!isnan.(tau)) .&
+                     (.!isnan.(particle_size)) .&
+                     (.!isnan.(cloud_height)) .& (.!isnan.(albedo)) )
+
+    println("point 3") # not reached
 
     # valid subsets
     v_cloud = cloud_mask[spatial_mask]
@@ -134,7 +139,7 @@ function update_albedo_profile!(
     file_valid_footprints = length(v_cloud)
     if file_valid_footprints == 0 return end
 
-    # Accumulate footprint contents down the track
+    # Accumulate footprint contents
     for i in 1:file_valid_footprints
         total_all_count[1] += 1
         if !v_cloud[i] # clear
@@ -142,7 +147,7 @@ function update_albedo_profile!(
         else           # cloud
             cloudy_all_count[1] += 1
             h_bin = get_bin_index(1e3*v_height[i], height_bins)
-            if 1 <= h_bin <= nh
+            if 1 <= h_bin <= nh # only accumulates below 4 km
                 cloudy_profile_count[h_bin] += 1
                 albedo_profile_accumulator[h_bin] += v_albedo[i]
                 reflec_profile_accumulator[h_bin] += v_reflectance[i]
@@ -158,8 +163,8 @@ count cloudy and clear pixels as a function of height.
 count pixels, reflectance weighted pixels, and albedo weighted pixels.
 """
 function compile_albedo_profile(lat_bounds, lon_bounds, data_file_list)
-    height_bins = 500.0:10.0:4000.0
-    nh = length(height_bins)
+    height_bins = 0.0:10.0:4000.0
+    nh = length(height_bins) # 401
 
     # --- PREALLOCATE ACCUMULATORS ---
     albedo_profile_accumulator = zeros(Float64, nh)
@@ -180,7 +185,8 @@ function compile_albedo_profile(lat_bounds, lon_bounds, data_file_list)
             total_all_count,
             joinpath(datadir, "GOES/all", file), 
             lat_bounds, 
-            lon_bounds )
+            lon_bounds,
+            75.0, 75.0, height_bins )
     end
 
     return (albedo_profile_accumulator, 
@@ -201,6 +207,7 @@ lon_bounds = (-60.0, -49.0)
 # files matching data
 daylight_file(s) = 1200 <= parse(Int,match(r"(\d{4})\.PX\.02K\.NC$", s).captures[1]) <= 1920
 data_file_list = filter(daylight_file, readdir(joinpath(datadir, "GOES/all"))) # [1:3]
+height_bins=0.0:10.0:4000.0
 
 # Compile albedo and reflectance-weighted clouds
 (   albedo_profile_accumulator,
@@ -209,14 +216,28 @@ data_file_list = filter(daylight_file, readdir(joinpath(datadir, "GOES/all"))) #
     cloudy_all_count,
     clear_all_count,
     total_all_count ) = compile_albedo_profile(
-    lat_bounds, lon_bounds, data_file_list[:] )
+    lat_bounds, lon_bounds, data_file_list[1:5] )
 
 # ==============================================================================
-# 4. NORMALIZE FRACTIONS
+# 4. NORMALIZE FRACTIONS below 4 km
 # ==============================================================================
-albedo_profile = albedo_profile_accumulator ./ total_all_count[1]
-reflec_profile = reflec_profile_accumulator ./ total_all_count[1]
-cloud_profile  = cloudy_profile_count       ./ total_all_count[1] # fraction of full pixels
+# below4km = sum(cloudy_profile_count) / cloudy_all_count[1]
+# albedo_profile = albedo_profile_accumulator ./ total_all_count[1] / below4km
+# reflec_profile = reflec_profile_accumulator ./ total_all_count[1] / below4km
+# cloud_profile  = cloudy_profile_count       ./ total_all_count[1] / below4km # fraction of full pixels
+# cloud_total_frac = cloudy_all_count[1] / total_all_count[1] / below4km
+# clear_total_frac = clear_all_count[1]  / total_all_count[1] / below4km
+
+low_obs_count = sum(cloudy_profile_count)
+high_count = max(cloudy_all_count[1] - low_obs_count, 0)
+f_high = high_count / total_all_count[1]
+vis_factor = max(1.0 - f_high, eps())   # avoid divide-by-zero
+# random-overlap correction for obscured low clouds
+overlap_corr = 1.0 / vis_factor
+
+albedo_profile = albedo_profile_accumulator ./ total_all_count[1] .* overlap_corr
+reflec_profile = reflec_profile_accumulator ./ total_all_count[1] .* overlap_corr
+cloud_profile  = cloudy_profile_count       ./ total_all_count[1] .* overlap_corr
 cloud_total_frac = cloudy_all_count[1] / total_all_count[1]
 clear_total_frac = clear_all_count[1]  / total_all_count[1]
 
@@ -226,6 +247,7 @@ begin
     println("Regional cloudy pixel fraction: ", round(100*cloud_total_frac, digits=2), " %")
     println("Regional mean albedo: ", round(sum(albedo_profile), digits=3))
     println("Regional mean reflectance: ", round(sum(reflec_profile), digits=3))
+    println("albedo/reflectance fraction ratio: ", round(sum(albedo_profile)/sum(reflec_profile), digits=3))
 end
 
 #=
@@ -244,11 +266,23 @@ NCDatasets.Dataset(joinpath(datadir, "shcu_cloud_albedo_refl_profile.nc"), "a") 
 end
 =#
 
+height_bins = 0.0:10.0:4000.0
+nh = length(height_bins)
+
 # plot the profiles
 clf()
-plot(albedo_profile, height_bins/1e3, label="albedo-fraction")
-plot(reflec_profile, height_bins/1e3, label="reflectance-fraction")
-plot(cloud_profile, height_bins/1e3, label="cloud fraction")
+subplot(1,2,1)
+plot(100*albedo_profile, height_bins/1e3, label="albedo-fraction")
+plot(100*reflec_profile, height_bins/1e3, label="reflectance-fraction")
+plot(10*cloud_profile, height_bins/1e3, label="0.1x cloud fraction")
 legend(frameon=false)
-xlim([0, 0.003])
-plot(1.4*albedo_profile, height_bins/1e3, label="albedo-fraction")
+xlim([-0.0002, 0.1]); ylim([0, 4])
+xlabel("cloud amount per 10 m height bin (%)")
+ylabel("height (km)")
+subplot(1,2,2)
+plot(cumsum(reverse(albedo_profile)), reverse(height_bins)/1e3, label="albedo-fraction")
+plot(cumsum(reverse(reflec_profile)), reverse(height_bins)/1e3, label="reflectance-fraction")
+plot(0.1*cumsum(reverse(cloud_profile)), reverse(height_bins)/1e3, label="0.1x cloud fraction")
+xlabel("cumulative cloud amount")
+xlim([-0.0005, 0.2]); ylim([0, 4])
+[ savefig(joinpath(datadir, "shcu_cloud_albedo_refl_profile.$f")) for f in ["png", "pdf", "svg", "eps" ] ]
