@@ -55,9 +55,9 @@ asym_parameter_kernel = asym_parameter(10.0) # 0.858 for 10 micron effective rad
 tau_fac(r_e) = (1-asym_parameter(r_e)) / (1-asym_parameter_kernel)
 calc_tau_scaled(r_e, tau) = tau * tau_fac(r_e)
 "albedo asymptotically matching radiative calculations of kernel"
-function albedo_kernel(r_e, tau_scaled)
+function albedo_kernel(tau_scaled, sza=90.0, r_e=10.0)
     omgts = (1-asym_parameter(r_e)) * tau_scaled
-    omgts / (2 + omgts)
+    omgts / (2*cosd(sza) + omgts)
 end
 
 
@@ -113,7 +113,7 @@ function update_albedo_profile!(
 
     # radiative calculations for each pixel
     tau_scaled = calc_tau_scaled.(particle_size, tau)
-    albedo = albedo_kernel.(particle_size, tau_scaled)
+    albedo = albedo_kernel.(tau_scaled, pixel_sza, particle_size)
 
     # ISCCP-consistent binary classification: cloudy if retrieval produced a valid tau
     cloud_mask = .!isnan.(tau) .& (tau .> 0.0)
@@ -228,6 +228,7 @@ begin
     println("Regional mean reflectance: ", round(sum(reflec_profile), digits=3))
 end
 
+#=
 # Save the profiles in a netcdf file.
 # first dump and edit the obs kernel cdl file, then
 # ncgen -o shcu_isccp_cloud_pct.nc shcu_isccp_cloud_pct.cdl
@@ -241,3 +242,13 @@ NCDatasets.Dataset(joinpath(datadir, "shcu_cloud_albedo_refl_profile.nc"), "a") 
     ald["clear_total_frac"][1] = clear_total_frac
     ald["total_all_count"][1] = total_all_count[1]
 end
+=#
+
+# plot the profiles
+clf()
+plot(albedo_profile, height_bins/1e3, label="albedo-fraction")
+plot(reflec_profile, height_bins/1e3, label="reflectance-fraction")
+plot(cloud_profile, height_bins/1e3, label="cloud fraction")
+legend(frameon=false)
+xlim([0, 0.003])
+plot(1.4*albedo_profile, height_bins/1e3, label="albedo-fraction")
