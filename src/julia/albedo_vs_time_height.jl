@@ -7,9 +7,19 @@ using Statistics
 using PythonPlot
 using Printf
 
-# Apply your global Arial font rules cleanly across the global scope
-rc("font", family="sans-serif")
-rc("font"; Symbol("sans-serif") => "Helvetica")
+# set up plot defaults
+PythonPlot.matplotlib.rcParams["font.family"] = "sans-serif"
+PythonPlot.matplotlib.rcParams["font.sans-serif"] = ["Helvetica", "Arial", "OpenSans"]
+# make fonts bigger by mutating rcParams
+font_settings = Dict(
+    "font.size" => 14,       # Base size
+    "axes.titlesize" => 18,  # Subplot titles
+    "axes.labelsize" => 16,  # X/Y labels
+    "xtick.labelsize" => 14, # X-axis numbers
+    "ytick.labelsize" => 14, # Y-axis numbers
+    "legend.fontsize" => 14  # Legend text
+)
+matplotlib.rcParams.update(font_settings)
 
 datadir = "../../../ATOMIC_GOES/data/"
 
@@ -379,26 +389,28 @@ let albedo_profile = lowrecmean(albedo_profile),
     plot(100*albedo_profile_mean, height_bins/1e3, linewidth=1, color="tab:blue", label="albedo-weighted")
     plot(100*reflec_profile_mean, height_bins/1e3, linewidth=1, color="tab:orange", label="reflectance-weighted")
     plot(0.5*100*cloud_profile_mean, height_bins/1e3, linewidth=1, color="k", label="0.5x cloud fraction")
-    plot(100*(albedo_profile_mean .- albedo_profile_err), height_bins/1e3, linewidth=0.4, color="tab:blue")
-    plot(100*(reflec_profile_mean .- reflec_profile_err), height_bins/1e3, linewidth=0.4, color="tab:orange")
+    plot(100*(albedo_profile_mean    .- albedo_profile_err), height_bins/1e3, linewidth=0.4, color="tab:blue")
+    plot(100*(reflec_profile_mean    .- reflec_profile_err), height_bins/1e3, linewidth=0.4, color="tab:orange")
     plot(0.5*100*(cloud_profile_mean .- cloud_profile_err), height_bins/1e3, linewidth=0.4, color="k")
-    plot(100*(albedo_profile_mean .+ albedo_profile_err), height_bins/1e3, linewidth=0.4, color="tab:blue")
-    plot(100*(reflec_profile_mean .+ reflec_profile_err), height_bins/1e3, linewidth=0.4, color="tab:orange")
+    plot(100*(albedo_profile_mean    .+ albedo_profile_err), height_bins/1e3, linewidth=0.4, color="tab:blue")
+    plot(100*(reflec_profile_mean    .+ reflec_profile_err), height_bins/1e3, linewidth=0.4, color="tab:orange")
     plot(0.5*100*(cloud_profile_mean .+ cloud_profile_err), height_bins/1e3, linewidth=0.4, color="k")
-    legend(frameon=false)
     xlim([-0.0002, 0.16]); ylim([0, 4])
-    xlabel("cloud amount per 10 m height bin (%)")
+    xlabel("cloud amount\nper 10 m height bin (%)")
     ylabel("height (km)")
     subplot(1,2,2)
-    plot(cumsum(reverse(albedo_profile_mean)), reverse(height_bins)/1e3, linewidth=1, color="tab:blue", label="albedo-weighted")
-    plot(cumsum(reverse(reflec_profile_mean)), reverse(height_bins)/1e3, linewidth=1, color="tab:orange", label="reflectance-weighted")
-    plot(0.5*cumsum(reverse(cloud_profile_mean)), reverse(height_bins)/1e3, linewidth=1, color="k", label="0.5x cloud fraction")
-    plot(cumsum(reverse(albedo_profile_mean .- albedo_profile_err)), reverse(height_bins)/1e3, linewidth=0.4, color="tab:blue")
-    plot(cumsum(reverse(reflec_profile_mean .- reflec_profile_err)), reverse(height_bins)/1e3, linewidth=0.4, color="tab:orange")
-    plot(0.5*cumsum(reverse(cloud_profile_mean .- cloud_profile_err)), reverse(height_bins)/1e3, linewidth=0.4, color="k")
-    plot(cumsum(reverse(albedo_profile_mean .+ albedo_profile_err)), reverse(height_bins)/1e3, linewidth=0.4, color="tab:blue")
-    plot(cumsum(reverse(reflec_profile_mean .+ reflec_profile_err)), reverse(height_bins)/1e3, linewidth=0.4, color="tab:orange")
-    plot(0.5*cumsum(reverse(cloud_profile_mean .+ cloud_profile_err)), reverse(height_bins)/1e3, linewidth=0.4, color="k")
-    xlabel("cumulative cloud amount")
-    xlim([-0.0005, 0.25]); ylim([0, 4])
+    plot(100*cumsum(reverse(albedo_profile_mean)), reverse(height_bins)/1e3, linewidth=1, color="tab:blue", label="albedo-weighted")
+    plot(100*cumsum(reverse(reflec_profile_mean)), reverse(height_bins)/1e3, linewidth=1, color="tab:orange", label="reflectance-weighted")
+    plot(0.5*100*cumsum(reverse(cloud_profile_mean)), reverse(height_bins)/1e3, linewidth=1, color="k", label="0.5x cloud fraction")
+    plot(100*cumsum(reverse(albedo_profile_mean    .- albedo_profile_err)), reverse(height_bins)/1e3, linewidth=0.4, color="tab:blue")
+    plot(100*cumsum(reverse(reflec_profile_mean    .- reflec_profile_err)), reverse(height_bins)/1e3, linewidth=0.4, color="tab:orange")
+    plot(0.5*100*cumsum(reverse(cloud_profile_mean .- cloud_profile_err)), reverse(height_bins)/1e3, linewidth=0.4, color="k")
+    plot(100*cumsum(reverse(albedo_profile_mean    .+ albedo_profile_err)), reverse(height_bins)/1e3, linewidth=0.4, color="tab:blue")
+    plot(100*cumsum(reverse(reflec_profile_mean    .+ reflec_profile_err)), reverse(height_bins)/1e3, linewidth=0.4, color="tab:orange")
+    plot(0.5*100*cumsum(reverse(cloud_profile_mean .+ cloud_profile_err)), reverse(height_bins)/1e3, linewidth=0.4, color="k")
+    xlabel("cumulative cloud amount (%)")
+    xlim([-0.05, 25]); ylim([0, 4])
+    legend(frameon=false)
+    tight_layout()
 end
+[ savefig(joinpath(datadir, "shcu_cloud_albedo_refl_profile.$f")) for f in ["png", "pdf", "svg", "eps" ] ]
