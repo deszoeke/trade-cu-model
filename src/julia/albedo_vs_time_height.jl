@@ -365,27 +365,40 @@ lowrecvar(x) = lowrecmean(x.^2) .- lowrecmean(x).^2
 albedo_profile_std = sqrt.(lowrecvar(albedo_profile))
 reflec_profile_std = sqrt.(lowrecvar(reflec_profile))
 cloud_profile_std  = sqrt.(lowrecvar(cloud_profile))
+norm = 1/sqrt(length(time))
 
 let albedo_profile = lowrecmean(albedo_profile),
     reflec_profile = lowrecmean(reflec_profile),
     cloud_profile  = lowrecmean(cloud_profile),
-    albedo_profile_std = sqrt.(lowrecvar(albedo_profile)),
-    reflec_profile_std = sqrt.(lowrecvar(reflec_profile)),
-    cloud_profile_std  = sqrt.(lowrecvar(cloud_profile))
+    albedo_profile_err = norm*sqrt.(lowrecvar(albedo_profile)),
+    reflec_profile_err = norm*sqrt.(lowrecvar(reflec_profile)),
+    cloud_profile_err  = norm*sqrt.(lowrecvar(cloud_profile))
 
     clf()
     subplot(1,2,1)
-    plot(100*albedo_profile, height_bins/1e3, linewidth=1, color="tab:blue", label="albedo-weighted")
-    plot(100*reflec_profile, height_bins/1e3, linewidth=1, color="tab:orange", label="reflectance-weighted")
-    plot(0.5*100*cloud_profile, height_bins/1e3, linewidth=1, color="k", label="0.5x cloud fraction")
+    plot(100*albedo_profile_mean, height_bins/1e3, linewidth=1, color="tab:blue", label="albedo-weighted")
+    plot(100*reflec_profile_mean, height_bins/1e3, linewidth=1, color="tab:orange", label="reflectance-weighted")
+    plot(0.5*100*cloud_profile_mean, height_bins/1e3, linewidth=1, color="k", label="0.5x cloud fraction")
+    plot(100*(albedo_profile_mean .- albedo_profile_err), height_bins/1e3, linewidth=0.4, color="tab:blue")
+    plot(100*(reflec_profile_mean .- reflec_profile_err), height_bins/1e3, linewidth=0.4, color="tab:orange")
+    plot(0.5*100*(cloud_profile_mean .- cloud_profile_err), height_bins/1e3, linewidth=0.4, color="k")
+    plot(100*(albedo_profile_mean .+ albedo_profile_err), height_bins/1e3, linewidth=0.4, color="tab:blue")
+    plot(100*(reflec_profile_mean .+ reflec_profile_err), height_bins/1e3, linewidth=0.4, color="tab:orange")
+    plot(0.5*100*(cloud_profile_mean .+ cloud_profile_err), height_bins/1e3, linewidth=0.4, color="k")
     legend(frameon=false)
     xlim([-0.0002, 0.16]); ylim([0, 4])
     xlabel("cloud amount per 10 m height bin (%)")
     ylabel("height (km)")
     subplot(1,2,2)
-    plot(cumsum(reverse(albedo_profile)), reverse(height_bins)/1e3, linewidth=1, color="tab:blue", label="albedo-weighted")
-    plot(cumsum(reverse(reflec_profile)), reverse(height_bins)/1e3, linewidth=1, color="tab:orange", label="reflectance-weighted")
-    plot(0.5*cumsum(reverse(cloud_profile)), reverse(height_bins)/1e3, linewidth=1, color="k", label="0.5x cloud fraction")
+    plot(cumsum(reverse(albedo_profile_mean)), reverse(height_bins)/1e3, linewidth=1, color="tab:blue", label="albedo-weighted")
+    plot(cumsum(reverse(reflec_profile_mean)), reverse(height_bins)/1e3, linewidth=1, color="tab:orange", label="reflectance-weighted")
+    plot(0.5*cumsum(reverse(cloud_profile_mean)), reverse(height_bins)/1e3, linewidth=1, color="k", label="0.5x cloud fraction")
+    plot(cumsum(reverse(albedo_profile_mean .- albedo_profile_err)), reverse(height_bins)/1e3, linewidth=0.4, color="tab:blue")
+    plot(cumsum(reverse(reflec_profile_mean .- reflec_profile_err)), reverse(height_bins)/1e3, linewidth=0.4, color="tab:orange")
+    plot(0.5*cumsum(reverse(cloud_profile_mean .- cloud_profile_err)), reverse(height_bins)/1e3, linewidth=0.4, color="k")
+    plot(cumsum(reverse(albedo_profile_mean .+ albedo_profile_err)), reverse(height_bins)/1e3, linewidth=0.4, color="tab:blue")
+    plot(cumsum(reverse(reflec_profile_mean .+ reflec_profile_err)), reverse(height_bins)/1e3, linewidth=0.4, color="tab:orange")
+    plot(0.5*cumsum(reverse(cloud_profile_mean .+ cloud_profile_err)), reverse(height_bins)/1e3, linewidth=0.4, color="k")
     xlabel("cumulative cloud amount")
     xlim([-0.0005, 0.25]); ylim([0, 4])
 end
