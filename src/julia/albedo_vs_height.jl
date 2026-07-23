@@ -71,24 +71,23 @@ end
 # ==============================================================================
 
 """
-    update_isccp_accumulation!(acc_cloudy, acc_clear_profile, acc_clear_scalar, global_denominator, nc_file, ...)
+    update_albedo_profile!(acc_cloudy, acc_clear_profile, acc_clear_scalar, global_denominator, nc_file, ...)
 Processes a single granule file. Allocates 100% clear space to a single scalar accumulator,
 while splitting subpixel cloud structures into the 2D joint matrix and 1D pressure profile.
 All trackers are modified strictly in place.
 """
-function update_albedo_accumulation!(
-    acc_profile_albedo::Float64,
-    acc_cloudy::Matrix{Float64}, 
-    acc_clear_profile::Vector{Float64}, 
-    acc_clear_scalar::Vector{Float64}, # Single scalar inside a 1-element container
-    global_denominator::Vector{Int64}, # Single element container for global normalization base
+function update_albedo_profile!(
+    albedo_profile_accumulator::Vector{Float64},
+    reflec_profile_accumulator::Vector{Float64},
+    cloudy_profile_count::Vector{Int64},
+    cloudy_all_count::Vector{Int64},
+    clear_all_count::Vector{Int64},
+    total_all_count::Vector{Int64}, # <- updates
     nc_file::String,
     lat_bounds::Tuple{Float64, Float64},
     lon_bounds::Tuple{Float64, Float64},
-    tau_edges::Vector{T},
-    pc_edges::Vector{T};
     vza_thr = 60.0, 
-    sza_thr = 60.0 ) where T <: Real
+    sza_thr = 60.0 )
 
     if !isfile(nc_file)
         println("Warning: file not found: ", nc_file)
@@ -107,10 +106,12 @@ function update_albedo_accumulation!(
     particle_size   = coalesce.(ds["cloud_particle_size"][:,:], NaN32)
     pixel_sza       = coalesce.(ds["pixel_sza"][:,:], NaN32)
     pixel_vza       = coalesce.(ds["pixel_vza"][:,:], NaN32)
-    pc              = coalesce.(ds["cloud_top_pressure"][:,:], NaN32)
+    # pc              = coalesce.(ds["cloud_top_pressure"][:,:], NaN32)
+    cloud_height    = coalesce.(ds["cloud_top_height"][:,:], NaN32)
 
     close(ds)
 
+    # radiative calculations for each pixel
     tau_scaled = calc_tau_scaled.(particle_size, tau)
     albedo = albedo_kernel.(particle_size, tau_scaled)
 
@@ -125,81 +126,73 @@ function update_albedo_accumulation!(
 
     # valid subsets
     v_cloud = cloud_mask[spatial_mask]
-    v_pc    = pc[spatial_mask]
+    v_height = cloud_height[spatial_mask]
     v_tau   = tau_scaled[spatial_mask]
     v_albedo = albedo[spatial_mask]
+    v_reflectance = reflectance_vis[spatial_mask]
 
     file_valid_footprints = length(v_cloud)
     if file_valid_footprints == 0 return end
 
     # Accumulate footprint contents down the track
     for i in 1:file_valid_footprints
-
-        # --- BRANCH 1: Clear pixel — no valid retrieval ---
-        if !v_cloud[i]
-            acc_clear_scalar[1] += 1.0
-
-        # --- BRANCH 2: Cloudy pixel — bin retrieved (tau, pc) into joint histogram ---
-        else
-            acc_profile_albedo += v_albedo[i]
-            h_bin = get_bin_index(v_pc[i], pc_edges)
-            if h_bin > 0
-                tau_bin = get_bin_index(v_tau[i], tau_edges)
-                if tau_bin > 0
-                    acc_cloudy[p_bin, tau_bin] += 1.0
-                end
+        total_all_count[1] += 1
+        if !v_cloud[i] # clear
+            clear_all_count[1] += 1
+        else           # cloud
+            cloudy_all_count[1] += 1
+            h_bin = get_bin_index(1e3*v_height[i], height_bins)
+            if 1 <= h_bin <= nh
+                cloudy_profile_count[h_bin] += 1
+                albedo_profile_accumulator[h_bin] += v_albedo[i]
+                reflec_profile_accumulator[h_bin] += v_reflectance[i]
             end
         end
     end
 
-    # Increment master footprint tracker in place
-    global_denominator[1] += file_valid_footprints
     println("$nc_file ($file_valid_footprints pixels)")
 end
 
-function compile_isccp_histogram(lat_bounds, lon_bounds, data_file_list)
-    #tau_edges = [0.0, 0.3, 1.3, 3.6, 9.4, 23.0, 60.0, 1000.0]
-    #pc_edges  = [10.0, 180.0, 310.0, 440.0, 560.0, 680.0, 800.0, 1000.0]
-    # Zelinka kernel bin edges:
-    tau_edges = [0.01, 0.3, 1.3, 3.6, 9.4, 23, 60, 380]
-    pc_edges = reverse(float([1000, 800, 680, 560, 440, 310, 180, 50]))
+"""
+count cloudy and clear pixels as a function of height.
+count pixels, reflectance weighted pixels, and albedo weighted pixels.
+"""
+function compile_albedo_profile(lat_bounds, lon_bounds, data_file_list)
+    height_bins = 500.0:10.0:4000.0
+    nh = length(height_bins)
 
     # --- PREALLOCATE ACCUMULATORS ---
-    albedo_mean_accumulator = 0.0
-    isccp_cloudy_accumulator = zeros(Float64, 7, 7)
-    isccp_clear_profile_acc  = zeros(Float64, 7)
-    global_clear_pixel_counter = zeros(Float64, 1) # Single explicit scalar counter for completely clear space
-    global_total_footprints    = zeros(Int64, 1)   # Global denominator tracking all scanned pixels
+    albedo_profile_accumulator = zeros(Float64, nh)
+    reflec_profile_accumulator = zeros(Float64, nh)
+    cloudy_profile_count = zeros(Int64, nh)
+    cloudy_all_count = zeros(Int64, 1)
+    clear_all_count  = zeros(Int64, 1)
+    total_all_count  = zeros(Int64, 1) # denominator of all scanned pixels
 
     # Run state ingestion loop sequence
     for file in data_file_list
-        update_isccp_accumulation!(
-            albedo_mean_accumulator,
-            isccp_cloudy_accumulator, 
-            isccp_clear_profile_acc,
-            global_clear_pixel_counter,
-            global_total_footprints, 
+        update_albedo_profile!(
+            albedo_profile_accumulator,
+            reflec_profile_accumulator,
+            cloudy_profile_count,
+            cloudy_all_count,
+            clear_all_count,
+            total_all_count,
             joinpath(datadir, "GOES/all", file), 
             lat_bounds, 
-            lon_bounds, 
-            tau_edges, 
-            pc_edges )
+            lon_bounds )
     end
 
-    return (albedo_mean_accumulator, isccp_cloudy_accumulator, isccp_clear_profile_acc, global_clear_pixel_counter, global_total_footprints)
-end
-
-# ZELINKA FEEDBACK KERNEL FUNCTIONS
-function load_zelinka_kernel( kernel_file=joinpath(datadir, "obs_cloud_kernels4.nc") )
-    NCDatasets.Dataset(kernel_file, "r") do kd
-    K_sw_cloudy = kd["SWkernel"][:,:,:,:,:] # -> (albcs, lat, plev, tau, time)
-    K_lw_cloudy = kd["LWkernel"][:,:,:,:]
-    return (K_sw_cloudy, K_lw_cloudy)
-    end
+    return (albedo_profile_accumulator, 
+        reflec_profile_accumulator, 
+        cloudy_profile_count, 
+        cloudy_all_count, 
+        clear_all_count, 
+        total_all_count)
 end
 
 # ==============================================================================
-# 3. ENVIRONMENT STATE PREALLOCATION
+# 3. RUN PARAMETERS
 # ==============================================================================
 
 # EUREC4A region
@@ -209,195 +202,42 @@ lon_bounds = (-60.0, -49.0)
 daylight_file(s) = 1200 <= parse(Int,match(r"(\d{4})\.PX\.02K\.NC$", s).captures[1]) <= 1920
 data_file_list = filter(daylight_file, readdir(joinpath(datadir, "GOES/all"))) # [1:3]
 
-# Compile the ISCCP histograms across the domain track
-(   albedo_mean_accumulator,
-    isccp_cloudy_accumulator, 
-    isccp_clear_profile_acc, 
-    global_clear_pixel_counter, 
-    global_total_footprints ) = compile_isccp_histogram(
-        lat_bounds, lon_bounds, data_file_list )
+# Compile albedo and reflectance-weighted clouds
+(   albedo_profile_accumulator,
+    reflec_profile_accumulator,
+    cloudy_profile_count,
+    cloudy_all_count,
+    clear_all_count,
+    total_all_count ) = compile_albedo_profile(
+    lat_bounds, lon_bounds, data_file_list[:] )
 
 # ==============================================================================
-# 4. NORMALIZATION FOR RAD KERNELS
+# 4. NORMALIZE FRACTIONS
 # ==============================================================================
-denom = global_total_footprints[1]
-albedo_mean = albedo_mean_accumulator / denom
+albedo_profile = albedo_profile_accumulator ./ total_all_count[1]
+reflec_profile = reflec_profile_accumulator ./ total_all_count[1]
+cloud_profile  = cloudy_profile_count       ./ total_all_count[1] # fraction of full pixels
+cloud_total_frac = cloudy_all_count[1] / total_all_count[1]
+clear_total_frac = clear_all_count[1]  / total_all_count[1]
 
-# histogram percentage matrices
-isccp_cloudy_histogram_pct = (isccp_cloudy_accumulator ./ denom) .* 100.0
-isccp_clear_profile_pct    = (isccp_clear_profile_acc  ./ denom) .* 100.0 # all zeros
-total_domain_clear_sky_pct = (global_clear_pixel_counter / denom) * 100.0
+begin
+    println("Total pixel count: ", total_all_count[1])
+    println("Regional pure clear pixel fraction: ", round(100*clear_total_frac, digits=2), " %")
+    println("Regional cloudy pixel fraction: ", round(100*cloud_total_frac, digits=2), " %")
+    println("Regional mean albedo: ", round(sum(albedo_profile), digits=3))
+    println("Regional mean reflectance: ", round(sum(reflec_profile), digits=3))
+end
 
-println("Total pixel count: ", denom)
-println("Regional pure clear pixel fraction: ", round(total_domain_clear_sky_pct[1], digits=2), " %")
-println("Regional mean albedo: ", round(albedo_mean, digits=3))
-
-# Save the histogram in a netcdf file.
+# Save the profiles in a netcdf file.
 # first dump and edit the obs kernel cdl file, then
 # ncgen -o shcu_isccp_cloud_pct.nc shcu_isccp_cloud_pct.cdl
 # copy the variables we want
 # ncks -A -C -v plev_bnds,tau_bnds,plev,tau obs_cloud_kernels4.nc shcu_isccp_cloud_pct.nc
-NCDatasets.Dataset(joinpath(datadir, "shcu_isccp_cloud_pct4.nc"), "a") do ihd
-    # write the cloud histogram data
-    ihd["albedo"][1]           = albedo_mean
-    ihd["cloud_hist"][:,:]    .= isccp_cloudy_histogram_pct
-    ihd["clear_prof"][:]      .= isccp_clear_profile_pct
-    ihd["clear_pixel_frac"][1] = total_domain_clear_sky_pct
+NCDatasets.Dataset(joinpath(datadir, "shcu_cloud_albedo_refl_profile.nc"), "a") do ald
+    ald["albedo_profile"][:] .= albedo_profile
+    ald["reflec_profile"][:] .= reflec_profile
+    ald["cloud_profile"][:]  .= cloud_profile
+    ald["cloud_total_frac"][1] = cloud_total_frac
+    ald["clear_total_frac"][1] = clear_total_frac
+    ald["total_all_count"][1] = total_all_count[1]
 end
-
-# now use kernels to compute CRE or feedbacks across the cloudy and clear histogram structures
-K_sw_cloudy, K_lw_cloudy = load_zelinka_kernel()
-
-# average kernels in Jan-Feb, lat_range, lon_range
-# SW(time, tau, plev, lat, albcs) 
-# netcdf structure reverses to (albcs, lat, plev, tau, time) in julia
-ll = 42:43  # searchsortedfirst(lat,12.0):searchsortedlast(lat,16.5) # lat range for EUREC4A
-aa = 1   # searchsortedlast(albcs,0.05) # clear sky albedo approx 0
-tt = 1:2
-# K_sw_sc_cloudy = mean(K_sw_cloudy[tt,:,:,ll,aa], dims=(1,4)) |> dropdims
-# K_lw_sc_cloudy = mean(K_lw_cloudy[tt,:,:,ll   ], dims=(1,4)) |> dropdims
-K_sw_sc_cloudy = mean(K_sw_cloudy[aa, ll, :,:, tt], dims=(1,4))[1,:,:,1] # plev x tau
-K_lw_sc_cloudy = mean(K_lw_cloudy[    ll, :,:, tt], dims=(1,4))[1,:,:,1]
-# scale kernel bins by observed cloud fractions
-sw_cre_hist = isccp_cloudy_histogram_pct .* K_sw_sc_cloudy
-lw_cre_hist = isccp_cloudy_histogram_pct .* K_lw_sc_cloudy
-# would sum to get total CRE
-
-# compute Delta CRE W/m^2/K for +5 % decrease in lowest 2 cloud levels 
-dR_sw_ShCu = -0.05 * sw_cre_hist[(end-1):end, :] # apply to lowest 2 pressure levels
-dR_lw_ShCu = -0.05 * lw_cre_hist[(end-1):end, :]
-
-dSWCRE_ShCu = sum(dR_sw_ShCu) # local W/m^2/K sum over lowest 2 pressure levels and all tau bins
-
-# plots
-tau_edges = [0.01, 0.3, 1.3, 3.6, 9.4, 23, 60, 380]
-pc_edges = reverse(float([1000, 800, 680, 560, 440, 310, 180, 50]))
-
-"""
-    plot_isccp_matrix(data, tau_edges, pc_edges)
-
-Plots an ISCCP 2D histogram where each cell is rendered with equal visual size,
-regardless of the underlying physical values of the bins.
-
-- `data`: A 2D Matrix of dimensions (length(pc_edges)-1, length(tau_edges)-1)
-- `tau_edges`: Array of optical thickness boundaries
-- `pc_edges`: Array of cloud top pressure boundaries (sorted high-to-low or low-to-high)
-"""
-function plot_isccp_matrix(data::Matrix, tau_edges=tau_edges, pc_edges=pc_edges;
-    cmap=ColorMap("Blues"), kwargs...)
-    ax = gca()
-    return plot_isccp_matrix(ax, data, tau_edges, pc_edges, cmap=cmap, kwargs...)
-end
-function plot_isccp_matrix(ax, data::Matrix, tau_edges=tau_edges, pc_edges=pc_edges; 
-    cmap=ColorMap("Blues"), kwargs...)
-
-    fig = ax.figure
-    # Get dimensions based on the edge vectors
-    num_tau_bins = length(tau_edges) - 1
-    num_press_bins = length(pc_edges) - 1
-    
-    # Validate data matrix dimensions
-    if size(data) != (num_press_bins, num_tau_bins)
-        error("Data dimensions $(size(data)) must match matrix bins ($num_press_bins, $num_tau_bins)")
-    end
-
-    # Force equal visual spacing by creating an identical, sequential grid index
-    x_grid = 0:num_tau_bins
-    y_grid = 0:num_press_bins
-
-    # Plot using the mock sequential grid to force uniform pixel/square sizing
-    pcm = ax.pcolormesh(
-        x_grid, 
-        y_grid, 
-        data, 
-        shading="flat", 
-        edgecolors="white", 
-        linewidth=1,
-        cmap=cmap,
-        kwargs...
-    )
-
-    cm   = pcm.cmap
-    norm = pcm.norm
-
-    # Add text annotations centered inside each bin
-    # Determine maximum value to dynamically scale text color contrast
-    max_val = maximum(data)  
-    for i in 1:num_press_bins
-        for j in 1:num_tau_bins
-            val = data[i, j]
-
-            r, g, b, _ = PythonPlot.PythonCall.pyconvert(
-                Tuple{Float64, Float64, Float64, Float64}, cm(norm(val)) )
-            lum = 0.299*r + 0.587*g + 0.114*b
-            # Dynamically set text color based on matrix shading depth for legibility
-            #text_color = val > (max_val * 0.5) ? "white" : "black"
-            text_color = (lum > 0.5) ? "black" : "white"
-
-            # Find the center coordinates for the current cell
-            x_center = (x_grid[j] + x_grid[j+1]) / 2
-            y_center = (y_grid[i] + y_grid[i+1]) / 2
-            
-            # Formats value to 2 decimal places (adjust as needed)
-            label_text = @sprintf("%.2g", round(val, digits=1)) 
-
-            ax.text(
-                x_center, 
-                y_center, 
-                label_text,
-                ha="center", 
-                va="center", 
-                color=text_color,
-                fontsize=9,
-                # weight="bold"
-            )
-        end
-    end
-
-    # Label the ticks exactly at the bin edges
-    ax.set_xticks(x_grid)
-    ax.set_xticklabels(string.(tau_edges))
-    ax.set_yticks(y_grid)
-    ax.set_yticklabels(string.(pc_edges))
-
-    # Format labels
-    ax.set_xlabel("cloud optical thickness (τ)")
-    ax.set_ylabel("cloud top pressure (hPa)")
-    # ax.set_title("ISCCP joint cloud histogram")
-
-    # Add contextual color bar
-    cbar = fig.colorbar(pcm, ax=ax)
-    # cbar.set_label("Cloud Fraction / Frequency")
-
-    fig.tight_layout()
-    return pcm, cbar
-end
-
-# initialize figure
-fig, axs = subplots(2, 1, figsize=(5, 6))
-axs[0].invert_yaxis() # Invert y-axis to have higher pressures at the bottom
-axs[1].invert_yaxis() # Invert y-axis to have higher pressures at the
-# axs[2].invert_yaxis() # Invert y-axis to have higher pressures at the
-pclf, cb1 = plot_isccp_matrix(axs[0], isccp_cloudy_histogram_pct, tau_edges, pc_edges,
-    cmap=ColorMap("Blues").resampled(10))
-pcre, cb2 = plot_isccp_matrix(axs[1], sw_cre_hist[:,:,1], tau_edges, pc_edges,
-    cmap=ColorMap("Blues_r").resampled(10))
-# pcre.set_cmap("Blues_r")
-axs[0].set_title("GOES cloud fraction (%)")
-axs[1].set_title("SW CRE (W m⁻²)")
-axs[0].set_xlabel(nothing)
-# axs[1].set_ylabel(nothing)
-display(fig)
-
-for fmt in ["png", "svg", "pdf"]
-    fig.savefig("goes_isccp_cloud_histogram_and_cre.$fmt")
-end
-
-# example pcolor a masked array
-# bad_coords_mask = @.(isnan(lats) | isnan(lons))
-# masked_lon = np_ma.masked_array(lons, mask=bad_coords_mask)
-# masked_lat = np_ma.masked_array(lats, mask=bad_coords_mask)
-# masked_data = np_ma.masked_array(reflectance_vis', mask=bad_coords_mask')
-# pcolor(masked_lon, masked_lat, masked_data)
-# 
-# pcolor transposes based on number of arguments!
