@@ -71,6 +71,12 @@ function albedo_kernel(tau_scaled, sza=90.0, r_e=10.0)
     omgts / (2*cosd(sza) + omgts)
 end
 
+"subpixelcloud fraction for multiple cloud & surface reflections"
+function cloud_frac_proxy(a_obs, a_c, a_s=0.05, epsilon=1e-2)
+    # epsilon avoids divide by zero when a_c -> 0
+    (a_obs - a_s)*(1-a_c*a_s) / ((a_c+epsilon)*(1 - a_s)^2)
+end
+
 
 function get_bin_index(value, edges)
     if isnan(value) || value < edges[1] || value > edges[end] return 0 end
@@ -130,7 +136,7 @@ function update_albedo_profile!(
     lons            = coalesce.(ds["longitude"][:,:], NaN32)
     reflectance_vis = coalesce.(ds["reflectance_vis"][:,:], NaN32)
     tau             = coalesce.(ds["cloud_visible_optical_depth"][:,:], NaN32)
-    # sw_albedo       = coalesce.(ds["broadband_shortwave_albedo"][:,:], NaN32)
+    sw_albedo       = coalesce.(ds["broadband_shortwave_albedo"][:,:], NaN32)
     particle_size   = coalesce.(ds["cloud_particle_size"][:,:], NaN32)
     pixel_sza       = coalesce.(ds["pixel_sza"][:,:], NaN32)
     pixel_vza       = coalesce.(ds["pixel_vza"][:,:], NaN32)
@@ -139,7 +145,7 @@ function update_albedo_profile!(
 
     # radiative calculations for each pixel
     tau_scaled = calc_tau_scaled.(particle_size, tau)
-    albedo = albedo_kernel.(tau_scaled, pixel_sza, particle_size) # cloud albedo
+    albedo = albedo_kernel.(tau_scaled, pixel_sza, particle_size) # cloud albedo_cloud
 
     # cloudy if retrieval produced a valid tau>0
     cloud_mask = .!isnan.(tau) .& (tau .> 0.0)
@@ -153,7 +159,7 @@ function update_albedo_profile!(
     v_cloud = cloud_mask[spatial_mask]
     v_height = cloud_height[spatial_mask]
     v_tau   = tau_scaled[spatial_mask]
-    v_albedo = albedo[spatial_mask]
+    v_albedo = albedo_cloud[spatial_mask]
     v_reflectance = reflectance_vis[spatial_mask]
 
     file_valid_footprints = length(v_cloud)
