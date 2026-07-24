@@ -109,6 +109,7 @@ All trackers are modified strictly in place.
 """
 function update_albedo_profile!(
     albedo_c_profile_accumulator::Vector{Float64},
+    albedo_profile_accumulator::Vector{Float64},
     reflec_profile_accumulator::Vector{Float64},
     cloudf_profile_accumulator::Vector{Float64},
     cloud_profile_count::Vector{Int64},
@@ -179,6 +180,7 @@ function update_albedo_profile!(
             if 1 <= h_bin <= nh # only accumulates below 4 km
                 cloud_profile_count[h_bin] += 1
                 albedo_c_profile_accumulator[h_bin] += v_albedo_cloud[i]
+                albedo_profile_accumulator[h_bin] += v_albedo_cloud[i]
                 reflec_profile_accumulator[h_bin] += v_reflectance[i]
                 cloudf_profile_accumulator[h_bin] += v_reflectance[i]
             end
@@ -201,6 +203,7 @@ function compile_albedo_profile(lat_bounds, lon_bounds, data_file_list, fileout)
 
     # --- PREALLOCATE ACCUMULATORS ---
     albedo_c_profile_accumulator = zeros(Float64, nh)
+    albedo_profile_accumulator = zeros(Float64, nh)
     reflec_profile_accumulator = zeros(Float64, nh)
     cloudf_profile_accumulator = zeros(Float64, nh)
     cloud_profile_count = zeros(Int64, nh)
@@ -215,6 +218,7 @@ function compile_albedo_profile(lat_bounds, lon_bounds, data_file_list, fileout)
         for (fi, file) in enumerate(data_file_list)
             # zero accumulators each time
             albedo_c_profile_accumulator .= 0
+            albedo_profile_accumulator .= 0
             reflec_profile_accumulator .= 0
             cloudf_profile_accumulator .= 0
             cloud_profile_count .= 0
@@ -244,6 +248,7 @@ function compile_albedo_profile(lat_bounds, lon_bounds, data_file_list, fileout)
             cloud_low_count = sum(cloud_profile_count)
             clear_and_low_count = clear_all_count[1] + cloud_low_count # not obscured
             albedo_c_profile = albedo_c_profile_accumulator ./ clear_and_low_count
+            albedo_profile = albedo_profile_accumulator ./ clear_and_low_count
             reflec_profile = reflec_profile_accumulator ./ clear_and_low_count
             cloudf_profile = cloudf_profile_accumulator ./ clear_and_low_count # fractional pixel
             cloud_profile  = cloud_profile_count        ./ clear_and_low_count # full pixel
@@ -253,6 +258,7 @@ function compile_albedo_profile(lat_bounds, lon_bounds, data_file_list, fileout)
             # save one record each time to file
             dsout["time"][fi] = yyyydoy_HHMM2dt(data_file_list[fi][17:28])
             dsout["albedo_c_profile"][:, fi] .= albedo_c_profile
+            dsout["albedo_profile"][:, fi] .= albedo_profile
             dsout["reflec_profile"][:, fi] .= reflec_profile
             dsout["cloudf_profile"][:, fi] .= cloudf_profile # subpixel cloud fraction proxy
             dsout["cloud_profile"][ :, fi] .=  cloud_profile
@@ -264,6 +270,7 @@ function compile_albedo_profile(lat_bounds, lon_bounds, data_file_list, fileout)
 
     # return only the last record
     return (albedo_c_profile_accumulator, 
+        albedo_profile_accumulator,
         reflec_profile_accumulator, 
         cloudf_profile_accumulator,
         cloud_profile_count, 
@@ -304,6 +311,7 @@ fileout =joinpath(datadir, "shcu_cloud_albedo_refl_profile_ts.nc")
 cloud_low_count = sum(cloud_profile_count)
 clear_and_low_count = clear_all_count[1] + cloud_low_count # not obscured
 albedo_c_profile = albedo_c_profile_accumulator ./ clear_and_low_count
+albedo_profile = albedo_profile_accumulator ./ clear_and_low_count
 reflec_profile = reflec_profile_accumulator ./ clear_and_low_count
 cloudf_profile = cloudf_profile_accumulator ./ clear_and_low_count
 cloud_profile  = cloud_profile_count        ./ clear_and_low_count
@@ -448,4 +456,4 @@ let albedo_c_profile = lowrecmean(albedo_c_profile),
     suptitle("cloud albedo, reflectance, and pixel fraction profiles\n(daylight GOES 2020 Jan-Feb 12.5°N-16°N, 60°W-49°W)")
     tight_layout()
 end
-[ savefig(joinpath(datadir, "shcu_cloud_albedo_refl_profile.$f")) for f in ["png", "pdf", "svg", "eps" ] ]
+# [ savefig(joinpath(datadir, "shcu_cloud_albedo_refl_profile.$f")) for f in ["png", "pdf", "svg", "eps" ] ]
