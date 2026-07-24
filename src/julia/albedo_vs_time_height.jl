@@ -141,7 +141,7 @@ function update_albedo_profile!(
     tau_scaled = calc_tau_scaled.(particle_size, tau)
     albedo = albedo_kernel.(tau_scaled, pixel_sza, particle_size) # cloud albedo
 
-    # ISCCP-consistent binary classification: cloudy if retrieval produced a valid tau
+    # cloudy if retrieval produced a valid tau>0
     cloud_mask = .!isnan.(tau) .& (tau .> 0.0)
 
     # geographic / solar zenith condition mask; include clear and cloudy pixels
