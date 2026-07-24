@@ -65,15 +65,15 @@ asym_parameter(r_e) = 0.823 + 0.0035 * r_e
 asym_parameter_kernel = asym_parameter(10.0) # 0.858 for 10 micron effective radius
 tau_fac(r_e) = (1-asym_parameter(r_e)) / (1-asym_parameter_kernel)
 calc_tau_scaled(r_e, tau) = tau * tau_fac(r_e)
-"albedo asymptotically matching radiative calculations of kernel"
+"cloud albedo asymptotically matching radiative calculations of kernel"
 function albedo_kernel(tau_scaled, sza=90.0, r_e=10.0)
     omgts = (1-asym_parameter(r_e)) * tau_scaled
     omgts / (2*cosd(sza) + omgts)
 end
 
 "subpixelcloud fraction for multiple cloud & surface reflections"
-function cloud_frac_proxy(a_obs, a_c, a_s=0.05, epsilon=1e-2)
-    # epsilon avoids divide by zero when a_c -> 0
+function cloud_frac_proxy(a_obs, a_c; a_s=0.05, epsilon=1e-2)
+    # epsilon avoid divide by zero when a_c -> 0
     (a_obs - a_s)*(1-a_c*a_s) / ((a_c+epsilon)*(1 - a_s)^2)
 end
 
@@ -108,8 +108,9 @@ while splitting subpixel cloud structures into the 2D joint matrix and 1D pressu
 All trackers are modified strictly in place.
 """
 function update_albedo_profile!(
-    albedo_profile_accumulator::Vector{Float64},
+    albedo_c_profile_accumulator::Vector{Float64},
     reflec_profile_accumulator::Vector{Float64},
+    cloudf_profile_accumulator::Vector{Float64},
     cloud_profile_count::Vector{Int64},
     cloud_all_count::Vector{Int64},
     clear_all_count::Vector{Int64},
@@ -145,7 +146,9 @@ function update_albedo_profile!(
 
     # radiative calculations for each pixel
     tau_scaled = calc_tau_scaled.(particle_size, tau)
-    albedo = albedo_kernel.(tau_scaled, pixel_sza, particle_size) # cloud albedo_cloud
+    albedo_cloud = albedo_kernel.(tau_scaled, pixel_sza, particle_size)
+    cloud_frac = cloud_frac_proxy.(sw_albedo, albedo_cloud)
+
 
     # cloudy if retrieval produced a valid tau>0
     cloud_mask = .!isnan.(tau) .& (tau .> 0.0)
@@ -159,7 +162,7 @@ function update_albedo_profile!(
     v_cloud = cloud_mask[spatial_mask]
     v_height = cloud_height[spatial_mask]
     v_tau   = tau_scaled[spatial_mask]
-    v_albedo = albedo_cloud[spatial_mask]
+    v_albedo_cloud = albedo_cloud[spatial_mask]
     v_reflectance = reflectance_vis[spatial_mask]
 
     file_valid_footprints = length(v_cloud)
@@ -175,8 +178,9 @@ function update_albedo_profile!(
             h_bin = get_bin_index(1e3*v_height[i], height_bins)
             if 1 <= h_bin <= nh # only accumulates below 4 km
                 cloud_profile_count[h_bin] += 1
-                albedo_profile_accumulator[h_bin] += v_albedo[i]
+                albedo_c_profile_accumulator[h_bin] += v_albedo_cloud[i]
                 reflec_profile_accumulator[h_bin] += v_reflectance[i]
+                cloudf_profile_accumulator[h_bin] += v_reflectance[i]
             end
         end
     end
@@ -196,8 +200,9 @@ function compile_albedo_profile(lat_bounds, lon_bounds, data_file_list, fileout)
     vza_thr = 75.0
 
     # --- PREALLOCATE ACCUMULATORS ---
-    albedo_profile_accumulator = zeros(Float64, nh)
+    albedo_c_profile_accumulator = zeros(Float64, nh)
     reflec_profile_accumulator = zeros(Float64, nh)
+    cloudf_profile_accumulator = zeros(Float64, nh)
     cloud_profile_count = zeros(Int64, nh)
     cloud_all_count = zeros(Int64, 1)
     clear_all_count  = zeros(Int64, 1)
@@ -209,8 +214,9 @@ function compile_albedo_profile(lat_bounds, lon_bounds, data_file_list, fileout)
         # ...loop over input files
         for (fi, file) in enumerate(data_file_list)
             # zero accumulators each time
-            albedo_profile_accumulator .= 0
+            albedo_c_profile_accumulator .= 0
             reflec_profile_accumulator .= 0
+            cloudf_profile_accumulator .= 0
             cloud_profile_count .= 0
             cloud_all_count .= 0
             clear_all_count .= 0
@@ -218,8 +224,10 @@ function compile_albedo_profile(lat_bounds, lon_bounds, data_file_list, fileout)
 
             # update counts for one image file
             update_albedo_profile!(
+                albedo_c_profile_accumulator,
                 albedo_profile_accumulator,
                 reflec_profile_accumulator,
+                cloudf_profile_accumulator,
                 cloud_profile_count,
                 cloud_all_count,
                 clear_all_count,
@@ -235,16 +243,18 @@ function compile_albedo_profile(lat_bounds, lon_bounds, data_file_list, fileout)
             # calculate fractions
             cloud_low_count = sum(cloud_profile_count)
             clear_and_low_count = clear_all_count[1] + cloud_low_count # not obscured
-            albedo_profile = albedo_profile_accumulator ./ clear_and_low_count
+            albedo_c_profile = albedo_c_profile_accumulator ./ clear_and_low_count
             reflec_profile = reflec_profile_accumulator ./ clear_and_low_count
-            cloud_profile  = cloud_profile_count        ./ clear_and_low_count
+            cloudf_profile = cloudf_profile_accumulator ./ clear_and_low_count # fractional pixel
+            cloud_profile  = cloud_profile_count        ./ clear_and_low_count # full pixel
             cloud_total_frac = cloud_all_count[1] / total_all_count[1]
             clear_total_frac = clear_all_count[1] / total_all_count[1]
 
             # save one record each time to file
             dsout["time"][fi] = yyyydoy_HHMM2dt(data_file_list[fi][17:28])
-            dsout["albedo_profile"][:, fi] .= albedo_profile
+            dsout["albedo_c_profile"][:, fi] .= albedo_c_profile
             dsout["reflec_profile"][:, fi] .= reflec_profile
+            dsout["cloudf_profile"][:, fi] .= cloudf_profile # subpixel cloud fraction proxy
             dsout["cloud_profile"][ :, fi] .=  cloud_profile
             dsout["cloud_total_frac"][fi] = cloud_total_frac
             dsout["clear_total_frac"][fi] = clear_total_frac
@@ -253,8 +263,9 @@ function compile_albedo_profile(lat_bounds, lon_bounds, data_file_list, fileout)
     end
 
     # return only the last record
-    return (albedo_profile_accumulator, 
+    return (albedo_c_profile_accumulator, 
         reflec_profile_accumulator, 
+        cloudf_profile_accumulator,
         cloud_profile_count, 
         cloud_all_count, 
         clear_all_count, 
@@ -277,8 +288,10 @@ height_bins=0.0:10.0:4000.0
 
 # Compile albedo and reflectance-weighted cloud counts
 fileout =joinpath(datadir, "shcu_cloud_albedo_refl_profile_ts.nc")
-(   albedo_profile_accumulator,
+(   albedo_c_profile_accumulator,
+    albedo_profile_accumulator,
     reflec_profile_accumulator,
+    cloudf_profile_accumulator,
     cloud_profile_count,
     cloud_all_count,
     clear_all_count,
@@ -290,8 +303,9 @@ fileout =joinpath(datadir, "shcu_cloud_albedo_refl_profile_ts.nc")
 # ==============================================================================
 cloud_low_count = sum(cloud_profile_count)
 clear_and_low_count = clear_all_count[1] + cloud_low_count # not obscured
-albedo_profile = albedo_profile_accumulator ./ clear_and_low_count
+albedo_c_profile = albedo_c_profile_accumulator ./ clear_and_low_count
 reflec_profile = reflec_profile_accumulator ./ clear_and_low_count
+cloudf_profile = cloudf_profile_accumulator ./ clear_and_low_count
 cloud_profile  = cloud_profile_count        ./ clear_and_low_count
 cloud_total_frac = cloud_all_count[1] / total_all_count[1]
 clear_total_frac = clear_all_count[1] / total_all_count[1]
@@ -319,8 +333,10 @@ for fi = 1:5
         # --- Read a single record matching your variables ---
         # (Note: time reads back directly as a Julia DateTime object)
         dt_parsed        = dsin["time"][fi]
+        albedo_c_profile = dsin["albedo_c_profile"][:, fi]
         albedo_profile   = dsin["albedo_profile"][:, fi]
         reflec_profile   = dsin["reflec_profile"][:, fi]
+        cloudf_profile   = dsin["cloudf_profile"][:, fi]
         cloud_profile    = dsin["cloud_profile"][:, fi]
         cloud_total_frac = dsin["cloud_total_frac"][fi]
         clear_total_frac = dsin["clear_total_frac"][fi]
@@ -348,16 +364,20 @@ end
 # read the whole file with the same variable names
 (  time,
    cloud_top_height,
+   albedo_c_profile,
    albedo_profile,
    reflec_profile,
+   cloudf_profile,
    cloud_profile,
    cloud_total_frac,
    clear_total_frac,
    total_all_count ) = NCDatasets.Dataset(fileout, "r") do dsin
         dsin["time"][:],
         dsin["cloud_top_height"][:],
+        dsin["albedo_c_profile"][:,:],
         dsin["albedo_profile"][:,:],
         dsin["reflec_profile"][:,:],
+        dsin["cloudf_profile"][:,:],
         dsin["cloud_profile"][:,:],
         dsin["cloud_total_frac"][:],
         dsin["clear_total_frac"][:],
@@ -368,8 +388,10 @@ end
 # for the appropriate denominators
 clear_and_low_fraction = clear_total_frac .+ sum(cloud_profile, dims=1)[:]
 lowrecmean(x) = x*clear_and_low_fraction / sum(clear_and_low_fraction)
+albedo_c_profile_mean = lowrecmean(albedo_c_profile) # record mean profiles
 albedo_profile_mean = lowrecmean(albedo_profile) # record mean profiles
 reflec_profile_mean = lowrecmean(reflec_profile)
+cloudf_profile_mean = lowrecmean(cloudf_profile)
 cloud_profile_mean  = lowrecmean(cloud_profile)
 
 allrecmean(x) = x'*total_all_count / sum(total_all_count)
@@ -378,16 +400,22 @@ clear_total_frac_mean = allrecmean(clear_total_frac)
 
 # variance
 lowrecvar(x) = lowrecmean(x.^2) .- lowrecmean(x).^2
+albedo_c_profile_std = sqrt.(lowrecvar(albedo_c_profile))
 albedo_profile_std = sqrt.(lowrecvar(albedo_profile))
 reflec_profile_std = sqrt.(lowrecvar(reflec_profile))
+cloudf_profile_std = sqrt.(lowrecvar(cloudf_profile))
 cloud_profile_std  = sqrt.(lowrecvar(cloud_profile))
 norm = 1/sqrt(length(time))
 
-let albedo_profile = lowrecmean(albedo_profile),
+let albedo_c_profile = lowrecmean(albedo_c_profile),
+    albedo_profile = lowrecmean(albedo_profile),
     reflec_profile = lowrecmean(reflec_profile),
+    cloudf_profile = lowrecmean(cloudf_profile),
     cloud_profile  = lowrecmean(cloud_profile),
+    albedo_c_profile_err = norm*sqrt.(lowrecvar(albedo_c_profile)),
     albedo_profile_err = norm*sqrt.(lowrecvar(albedo_profile)),
     reflec_profile_err = norm*sqrt.(lowrecvar(reflec_profile)),
+    cloudf_profile_err = norm*sqrt.(lowrecvar(cloudf_profile)),
     cloud_profile_err  = norm*sqrt.(lowrecvar(cloud_profile))
 
     clf()
