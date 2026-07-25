@@ -159,7 +159,8 @@ function compile_isccp_histogram(lat_bounds, lon_bounds, data_file_list)
     #pc_edges  = [10.0, 180.0, 310.0, 440.0, 560.0, 680.0, 800.0, 1000.0]
     # Zelinka kernel bin edges:
     tau_edges = [0.01, 0.3, 1.3, 3.6, 9.4, 23, 60, 380]
-    pc_edges = reverse(float([1000, 800, 680, 560, 440, 310, 180, 50]))
+    pc_edges = reverse(float([1000, 800, 680, 560, 440, 310, 180, 50])) 
+    # ! pc_edges are reversed relative to Zelinka kernel !
 
     # --- PREALLOCATE ACCUMULATORS ---
     albedo_mean_accumulator = zeros(Float64, 1)
@@ -187,6 +188,11 @@ function compile_isccp_histogram(lat_bounds, lon_bounds, data_file_list)
 end
 
 # ZELINKA FEEDBACK KERNEL FUNCTIONS
+"""
+K_sw_cloudy, K_lw_cloudy = load_zelinka_kernel(kernel_file)
+plev_bnds = [1000.0  800.0  680.0  560.0  440.0  310.0  180.0  50.0]
+tau_bnds = [0.01  0.3  1.3  3.6  9.4  23.0  60.0  380.0]
+"""
 function load_zelinka_kernel( kernel_file=joinpath(datadir, "obs_cloud_kernels4.nc") )
     NCDatasets.Dataset(kernel_file, "r") do kd
     K_sw_cloudy = kd["SWkernel"][:,:,:,:,:] # -> (albcs, lat, plev, tau, time)
@@ -194,6 +200,7 @@ function load_zelinka_kernel( kernel_file=joinpath(datadir, "obs_cloud_kernels4.
     return (K_sw_cloudy, K_lw_cloudy)
     end
 end
+# lowest 2 cloud levels are indexed plev[1:2], height incresing, plev is decreasing
 
 # ==============================================================================
 # 3. ENVIRONMENT STATE PREALLOCATION
@@ -206,44 +213,59 @@ lon_bounds = (-60.0, -49.0)
 daylight_file(s) = 1200 <= parse(Int,match(r"(\d{4})\.PX\.02K\.NC$", s).captures[1]) <= 1920
 data_file_list = filter(daylight_file, readdir(joinpath(datadir, "GOES/all"))) # [1:3]
 
-# Compile the ISCCP histograms across the domain track
-(   albedo_mean_accumulator,
-    isccp_cloudy_accumulator, 
-    isccp_clear_profile_acc, 
-    global_clear_pixel_counter, 
-    global_total_footprints ) = compile_isccp_histogram(
-        lat_bounds, lon_bounds, data_file_list )
-
-# ==============================================================================
-# 4. NORMALIZATION FOR RAD KERNELS
-# ==============================================================================
-denom = global_total_footprints[1]
-albedo_mean = albedo_mean_accumulator[1] / denom
-
-# histogram percentage matrices
-isccp_cloudy_histogram_pct = (isccp_cloudy_accumulator ./ denom) .* 100.0
-isccp_clear_profile_pct    = (isccp_clear_profile_acc  ./ denom) .* 100.0 # all zeros
-total_domain_clear_sky_pct = (global_clear_pixel_counter / denom) * 100.0
-
-println("Total pixel count: ", denom)
-println("Regional pure clear pixel fraction: ", round(total_domain_clear_sky_pct[1], digits=2), " %")
-println("Regional mean albedo: ", round(albedo_mean, digits=3))
-
-# Save the histogram in a netcdf file.
+# Set up the histogram netcdf file.
 # first dump and edit the obs kernel cdl file, then
 # ncgen -o shcu_isccp_cloud_pct.nc shcu_isccp_cloud_pct.cdl
 # copy the variables we want
 # ncks -A -C -v plev_bnds,tau_bnds,plev,tau obs_cloud_kernels4.nc shcu_isccp_cloud_pct.nc
-NCDatasets.Dataset(joinpath(datadir, "shcu_isccp_cloud_pct4.nc"), "a") do ihd
+filename = joinpath(datadir, "shcu_isccp_cloud_pct4.nc")
+if false
+    # Compile the ISCCP histograms across the domain track
+    (   albedo_mean_accumulator,
+        isccp_cloudy_accumulator, 
+        isccp_clear_profile_acc, 
+        global_clear_pixel_counter, 
+        global_total_footprints ) = compile_isccp_histogram(
+            lat_bounds, lon_bounds, data_file_list )
+
+    # ==============================================================================
+    # 4. NORMALIZATION FOR RAD KERNELS
+    # ==============================================================================
+    denom = global_total_footprints[1]
+    albedo_mean = albedo_mean_accumulator[1] / denom
+
+    # histogram percentage matrices
+    isccp_cloudy_histogram_pct = (isccp_cloudy_accumulator ./ denom) .* 100.0
+    isccp_clear_profile_pct    = (isccp_clear_profile_acc  ./ denom) .* 100.0 # all zeros
+    total_domain_clear_sky_pct = (global_clear_pixel_counter / denom) * 100.0
+
+    println("Total pixel count: ", denom)
+    println("Regional pure clear pixel fraction: ", round(total_domain_clear_sky_pct[1], digits=2), " %")
+    println("Regional mean albedo: ", round(albedo_mean, digits=3))
+
     # write the cloud histogram data
-    ihd["albedo"][1]           = albedo_mean
-    ihd["cloud_hist"][:,:]    .= isccp_cloudy_histogram_pct
-    ihd["clear_prof"][:]      .= isccp_clear_profile_pct
-    ihd["clear_pixel_frac"][1] = total_domain_clear_sky_pct
+    # plev is reversed relative to kernel data!
+    NCDatasets.Dataset(filename, "a") do ihd
+        ihd["albedo"][1]           = albedo_mean
+        ihd["cloud_hist"][:,:]    .= isccp_cloudy_histogram_pct
+        ihd["clear_prof"][:]      .= isccp_clear_profile_pct
+        ihd["clear_pixel_frac"][1] = total_domain_clear_sky_pct
+    end
+else
+    # load data from the netcdf file
+    (albedo_mean, 
+    isccp_cloudy_histogram_pct, 
+     isccp_clear_profile_pct, 
+     total_domain_clear_sky_pct) = NCDatasets.Dataset(filename, "r") do ihd
+        ihd["albedo"][1],
+        ihd["cloud_hist"][:,:],
+        ihd["clear_prof"][:],
+        ihd["clear_pixel_frac"][1] 
+    end
 end
 
 # now use kernels to compute CRE or feedbacks across the cloudy and clear histogram structures
-K_sw_cloudy, K_lw_cloudy = load_zelinka_kernel()
+K_sw_cloudy, K_lw_cloudy = load_zelinka_kernel();
 
 # average kernels in Jan-Feb, lat_range, lon_range
 # SW(time, tau, plev, lat, albcs) 
@@ -256,19 +278,26 @@ tt = 1:2
 K_sw_sc_cloudy = mean(K_sw_cloudy[aa, ll, :,:, tt], dims=(1,4))[1,:,:,1] # plev x tau
 K_lw_sc_cloudy = mean(K_lw_cloudy[    ll, :,:, tt], dims=(1,4))[1,:,:,1]
 # scale kernel bins by observed cloud fractions
-sw_cre_hist = isccp_cloudy_histogram_pct .* K_sw_sc_cloudy
-lw_cre_hist = isccp_cloudy_histogram_pct .* K_lw_sc_cloudy
+ich = coalesce.(reverse(isccp_cloudy_histogram_pct, dims=1), NaN)
+sw_cre_hist = ich .* K_sw_sc_cloudy
+lw_cre_hist = ich .* K_lw_sc_cloudy
 # would sum to get total CRE
 
-# compute Delta CRE W/m^2/K for +5 % decrease in lowest 2 cloud levels 
-dR_sw_ShCu = -0.05 * sw_cre_hist[(end-1):end, :] # apply to lowest 2 pressure levels
-dR_lw_ShCu = -0.05 * lw_cre_hist[(end-1):end, :]
+# low cloud CRE (lowest 2 height levels, greatest pressure levels indexed 1:2)
+sw_low_cre, lw_low_cre = sum(sw_cre_hist[1:2, :]), sum(lw_cre_hist[1:2, :]) # W/m^2
 
-dSWCRE_ShCu = sum(dR_sw_ShCu) # local W/m^2/K sum over lowest 2 pressure levels and all tau bins
+# compute Delta CRE W/m^2/K for +5 % decrease in lowest 2 cloud levels 
+dR_sw_ShCu, dR_lw_ShCu = -0.05 .* (sw_low_cre, lw_low_cre)
 
 # plots
 tau_edges = [0.01, 0.3, 1.3, 3.6, 9.4, 23, 60, 380]
-pc_edges = reverse(float([1000, 800, 680, 560, 440, 310, 180, 50]))
+pc_edges = float([1000.0, 800, 680, 560, 440, 310, 180, 50]) # correct order
+
+function format_prec(val; sigdigits=2)
+    r = round(val; sigdigits=sigdigits)
+    # If it ends in .0 (like 26.0 or 380.0), convert to Int to drop the decimal
+    return isinteger(r) ? string(Int(r)) : string(r)
+end
 
 """
     plot_isccp_matrix(data, tau_edges, pc_edges)
@@ -280,11 +309,6 @@ regardless of the underlying physical values of the bins.
 - `tau_edges`: Array of optical thickness boundaries
 - `pc_edges`: Array of cloud top pressure boundaries (sorted high-to-low or low-to-high)
 """
-function plot_isccp_matrix(data::Matrix, tau_edges=tau_edges, pc_edges=pc_edges;
-    cmap=ColorMap("Blues"), kwargs...)
-    ax = gca()
-    return plot_isccp_matrix(ax, data, tau_edges, pc_edges, cmap=cmap, kwargs...)
-end
 function plot_isccp_matrix(ax, data::Matrix, tau_edges=tau_edges, pc_edges=pc_edges; 
     cmap=ColorMap("Blues"), kwargs...)
 
@@ -319,7 +343,7 @@ function plot_isccp_matrix(ax, data::Matrix, tau_edges=tau_edges, pc_edges=pc_ed
 
     # Add text annotations centered inside each bin
     # Determine maximum value to dynamically scale text color contrast
-    max_val = maximum(data)  
+    max_val = maximum(data)
     for i in 1:num_press_bins
         for j in 1:num_tau_bins
             val = data[i, j]
@@ -336,7 +360,8 @@ function plot_isccp_matrix(ax, data::Matrix, tau_edges=tau_edges, pc_edges=pc_ed
             y_center = (y_grid[i] + y_grid[i+1]) / 2
             
             # Formats value to 2 decimal places (adjust as needed)
-            label_text = @sprintf("%.2g", round(val, digits=1)) 
+            rv = round(val, digits=1)
+            label_text = rv==0.0 ? "" : @sprintf("%.2g", rv)
 
             ax.text(
                 x_center, 
@@ -353,9 +378,9 @@ function plot_isccp_matrix(ax, data::Matrix, tau_edges=tau_edges, pc_edges=pc_ed
 
     # Label the ticks exactly at the bin edges
     ax.set_xticks(x_grid)
-    ax.set_xticklabels(string.(tau_edges))
+    ax.set_xticklabels(string.(format_prec.(tau_edges)))
     ax.set_yticks(y_grid)
-    ax.set_yticklabels(string.(pc_edges))
+    ax.set_yticklabels(string.(round.(Int, pc_edges)))
 
     # Format labels
     ax.set_xlabel("cloud optical thickness (τ)")
@@ -369,15 +394,20 @@ function plot_isccp_matrix(ax, data::Matrix, tau_edges=tau_edges, pc_edges=pc_ed
     fig.tight_layout()
     return pcm, cbar
 end
+function plot_isccp_matrix(data::Matrix, tau_edges=tau_edges, pc_edges=pc_edges;
+    cmap=ColorMap("Blues"), kwargs...)
+    ax = gca()
+    return plot_isccp_matrix(ax, data, tau_edges, pc_edges, cmap=cmap, kwargs...)
+end
 
 # initialize figure
 fig, axs = subplots(2, 1, figsize=(5, 6))
 axs[0].invert_yaxis() # Invert y-axis to have higher pressures at the bottom
 axs[1].invert_yaxis() # Invert y-axis to have higher pressures at the
 # axs[2].invert_yaxis() # Invert y-axis to have higher pressures at the
-pclf, cb1 = plot_isccp_matrix(axs[0], isccp_cloudy_histogram_pct, tau_edges, pc_edges,
+pclf, cb1 = plot_isccp_matrix(axs[0], reverse(ich, dims=1), tau_edges, reverse(pc_edges),
     cmap=ColorMap("Blues").resampled(10))
-pcre, cb2 = plot_isccp_matrix(axs[1], sw_cre_hist[:,:,1], tau_edges, pc_edges,
+pcre, cb2 = plot_isccp_matrix(axs[1], reverse(sw_cre_hist, dims=1), tau_edges, reverse(pc_edges),
     cmap=ColorMap("Blues_r").resampled(10))
 # pcre.set_cmap("Blues_r")
 axs[0].set_title("GOES cloud fraction (%)")
