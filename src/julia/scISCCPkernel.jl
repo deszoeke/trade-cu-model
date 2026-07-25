@@ -420,11 +420,6 @@ for fmt in ["png", "svg", "pdf"]
     fig.savefig("goes_isccp_cloud_histogram_and_cre.$fmt")
 end
 
-# example pcolor a masked array
-# bad_coords_mask = @.(isnan(lats) | isnan(lons))
-# masked_lon = np_ma.masked_array(lons, mask=bad_coords_mask)
-# masked_lat = np_ma.masked_array(lats, mask=bad_coords_mask)
-# masked_data = np_ma.masked_array(reflectance_vis', mask=bad_coords_mask')
-# pcolor(masked_lon, masked_lat, masked_data)
-# 
-# pcolor transposes based on number of arguments!
+# print out the CREs
+println("SW, LW low cloud radiative effects: $(sw_low_cre), $(lw_low_cre)")
+println("SW, LW low cloud radiative effect change: $(dR_sw_ShCu), $(dR_lw_ShCu)")
