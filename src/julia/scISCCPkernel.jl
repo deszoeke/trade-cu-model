@@ -414,6 +414,7 @@ axs[0].set_title("GOES cloud fraction (%)")
 axs[1].set_title("SW CRE (W m⁻²)")
 axs[0].set_xlabel(nothing)
 # axs[1].set_ylabel(nothing)
+tight_layout()
 display(fig)
 
 for fmt in ["png", "svg", "pdf"]
