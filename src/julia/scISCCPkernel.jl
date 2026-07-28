@@ -424,3 +424,61 @@ end
 # print out the CREs
 println("SW, LW low cloud radiative effects: $(sw_low_cre), $(lw_low_cre)")
 println("SW, LW low cloud radiative effect change: $(dR_sw_ShCu), $(dR_lw_ShCu)")
+
+# get CERES FBCT histogram for comparison
+# /Users/deszoeks/Data/ATOMIC/satellite/ISCCP/CER_FluxByCldTyp-Month_Terra-Aqua-MODIS_Edition4A-20260521_024852"
+# compile_fbct_hist.jl
+fbct_histogram = [
+ 7.70293   10.2463      3.19888      0.521623     0.0567247   0.00132773
+ 1.50099    5.29244     5.71525      1.81545      0.304576    0.0157222
+ 0.642293   0.861229    1.28077      0.967155     0.422698    0.042823
+ 0.304027   0.252883    0.557532     0.511711     0.314445    0.042039
+ 2.05153    1.4502      1.62918      1.10968      0.59592     0.0858304
+ 3.54012    1.54909     0.831532     0.686792     0.704872    0.291805
+ 0.159219   0.00309147  0.000219069  0.000448272  0.00240926  0.0101675 ]
+fbct_od = [ 0.02, 1.27, 3.55, 9.38, 22.63, 60.36, 378.65 ]
+fbct_press = [ 1000.0, 800.0, 680.0, 560.0, 440.0, 310.0, 180.0, 10.0 ]
+fbct_sw_cre_kernel = [
+ 10.2211   31.0894  59.0229   91.5348  118.163  139.476
+ 14.8665   36.8831  64.7321   95.9388  123.27   144.842
+ 12.5879   39.0152  70.0865  102.226   128.906  155.732
+  7.91026  50.8679  81.5521  110.729   134.987  161.091
+ 15.5884   57.0098  91.7088  123.456   147.007  167.925
+ 13.1715   53.8972  92.0407  130.11    155.798  174.39
+  4.31043  38.7438  80.809   125.422   154.941  173.838 ]
+fbct_sw_cre_histogram = -0.01*fbct_histogram.*fbct_sw_cre_histogram
+
+# add the FBCT histogram to the plot
+fig, axs = subplots(2, 2, figsize=(8, 6))
+axs[0,0].invert_yaxis() # Invert y-axis to have higher pressures at the bottom
+axs[0,1].invert_yaxis() # Invert y-axis to have higher pressures at the
+axs[1,0].invert_yaxis() # Invert y-axis to have higher pressures at the
+axs[1,1].invert_yaxis() # Invert y-axis to have higher pressures at the
+pclf, cb1 = plot_isccp_matrix(axs[0,0], reverse(ich, dims=1), tau_edges, reverse(pc_edges),
+    cmap=ColorMap("Blues").resampled(10))
+pcre, cb2 = plot_isccp_matrix(axs[1,0], reverse(sw_cre_hist, dims=1), tau_edges, reverse(pc_edges),
+    cmap=ColorMap("Blues_r").resampled(10))
+pfbc, cb3 = plot_isccp_matrix(axs[0,1], reverse(fbct_histogram, dims=1), fbct_od, reverse(fbct_press),
+    cmap=ColorMap("Blues").resampled(10))
+pfsw, cb4 = plot_isccp_matrix(axs[1,1], reverse(fbct_sw_cre_histogram, dims=1), fbct_od, reverse(fbct_press),
+    cmap=ColorMap("Blues_r").resampled(10))
+
+axs[0,0].set_title("GOES cloud fraction (%)")
+axs[1,0].set_title("GOES SW CRE (W m⁻²)")
+axs[1,1].set_title("CERES FBCT SW CRE (W m⁻²)")
+axs[0,1].set_title("CERES FBCT cloud fraction (%)")
+axs[0,1].set_ylabel(nothing)
+axs[0,1].set_xlabel(nothing)
+axs[0,0].set_xlabel(nothing)
+[ ax.set_aspect(0.8) for ax in axs.flatten() ]  # Ensure equal aspect ratio for all subplots
+
+# panel labels
+axs[0,0].text(6.4, 0.6, "a", size=12)
+axs[1,0].text(6.4, 0.6, "c", size=12)
+axs[0,1].text(5.4, 0.6, "b", size=12)
+axs[1,1].text(5.4, 0.6, "d", size=12)
+
+tight_layout()
+display(fig)
+
+[ fig.savefig("goes_and_fbct_cloud_and_cre_histograms.$fmt") for fmt in ["png", "svg", "pdf"] ]
