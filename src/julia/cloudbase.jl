@@ -247,22 +247,53 @@ dWoW = -0.05
 
 b = 0:0.02:1; c = 0:0.02:1
 clf()
-subplot(2,2,1), contour(c,b, p.(b,c'), levels=15, linewidth=0.5, cmap=ColorMap("RdBu_r"))
+title("\$(b-1/2)(1-c)\$")
+subplot(2,2,1), contour(c,b, p.(b,c'), levels=-0.5:0.1:0.5, linewidth=0.5, cmap=ColorMap("RdBu_r"))
+plot([0,0], [0,1], "k.", markersize=10)
+xlim([0,1]), ylim([0,1])
 xticks([0, 0.5, 1])
 yticks([0, 0.5, 1])
 xlabel("\n\nsurface wind - circulation coupling \$c\$")
 ylabel("cloud base – surface\nsaturation deficit difference \$b\$")
 gca().set_aspect(1)
-text(0,  1.05, "Δs/s=+0.05\nΔC/C=$(round((fcb(1.05*s0)-fcb(s0))/fcb(s0), digits=2))", fontsize=10, horizontalalignment="center")
-text(0, -0.24, "Δs/s=–0.05\nΔC/C=+$(round((fcb(0.95*s0)-fcb(s0))/fcb(s0), digits=2))", fontsize=10, horizontalalignment="center")
-text(0.8, 1/2, "0", fontsize=10, verticalalignment="center", horizontalalignment="center")
+text(0,  1.05, "Δs/s=+0.025\nΔC/C=$(round((fcb(1.025*s0)-fcb(s0))/fcb(s0), digits=2))", fontsize=10, horizontalalignment="center")
+text(0, -0.24, "Δs/s=–0.025\nΔC/C=+$(round((fcb(0.975*s0)-fcb(s0))/fcb(s0), digits=2))", fontsize=10, horizontalalignment="center")
+text(0.01, 0.99, "+0.5", fontsize=10, verticalalignment="top", horizontalalignment="left")
+text(0.01, 0.01, "–0.5", fontsize=10, horizontalalignment="left")
+text(0.8, 0.5, "0", fontsize=10, verticalalignment="center", horizontalalignment="left")
+# colorbar()
 tight_layout()
 [ savefig("cloudbase_cloudfrac_sensitivity.$f") for f in ["png", "pdf", "svg", "eps"] ]
+
+
+# redo signs with +5% = dlnQ - dlnE
+p(b,c) = (b-0.5)*(c-1)
+
+clf()
+subplot(2,2,1), contour(c,b, p.(b,c'), levels=-0.5:0.1:0.5, linewidth=0.5, cmap=ColorMap("RdBu_r"))
+plot([0,0], [0,1], "k.", markersize=10)
+xlim([0,1]), ylim([0,1])
+xticks([0, 0.5, 1])
+yticks([0, 0.5, 1])
+xlabel("\n\nsurface wind - circulation coupling \$c\$")
+ylabel("cloud base – surface\nsaturation deficit difference \$b\$")
+gca().set_aspect(1)
+text(0,  1.05, "Δs/s=–0.025\nΔC/C=+$(round((fcb(0.975*s0)-fcb(s0))/fcb(s0), digits=2))", fontsize=10, horizontalalignment="center")
+text(0, -0.23, "Δs/s=+0.025\nΔC/C=\$$(round((fcb(1.025*s0)-fcb(s0))/fcb(s0), digits=2))\$", fontsize=10, horizontalalignment="center")
+text(0.01, 0.99, "-0.5", fontsize=10, verticalalignment="top", horizontalalignment="left")
+text(0.01, 0.01, "+0.5", fontsize=10, horizontalalignment="left")
+text(0.8, 0.5, "0", fontsize=10, verticalalignment="center", horizontalalignment="left")
+# colorbar()
+tight_layout()
+title("\$-(b-1/2)(1-c)\$")
+[ savefig("cloudbase_cloudfrac_sensitivity.$f") for f in ["png", "pdf", "svg", "eps"] ]
+
 
 "cloud base cloud fraction as a function of normalized saturation deficit \$s\$"
 fcb(s) = 0.5*(1 - erf(s))
 s0 = 1.13 # gives observed cloud fraction of 5.5 % at cloud base
-s = 0.95:0.01:1.05 .* s0
+s = (0.975:0.005:1.025) .* s0
 plot(s, fcb.(s))
 
-dlnfcb_dlns = (diff(fcb.(s)[[1 end]][:])/0.055) / 0.1 # -3.2
+dlnfcb_dlns = (diff(fcb.(s)[[1 end]][:])/0.055) / 0.05 # -3.2
+fcb([0.975, 1.025] .* s0)
