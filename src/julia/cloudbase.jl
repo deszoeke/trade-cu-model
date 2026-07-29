@@ -238,3 +238,31 @@ xlabel("cloud base RH (%)")
 # q_s  +7 %/K
 # 1-RH -5 %/K
 # RH0 = 0.8, RH1 = 0.81
+
+# evaluate the parametric dependence of s on cloud base-surface saturation deficit difference b
+# and surface flux wind-circulation coupling c.
+# nondimensional coefficients ∈ [0 1]
+p(b,c) = (b-0.5)*(1-c)
+dWoW = -0.05
+
+b = 0:0.02:1; c = 0:0.02:1
+clf()
+subplot(2,2,1), contour(c,b, p.(b,c'), levels=15, linewidth=0.5, cmap=ColorMap("RdBu_r"))
+xticks([0, 0.5, 1])
+yticks([0, 0.5, 1])
+xlabel("\n\nsurface wind - circulation coupling \$c\$")
+ylabel("cloud base – surface\nsaturation deficit difference \$b\$")
+gca().set_aspect(1)
+text(0,  1.05, "Δs/s=+0.05\nΔC/C=$(round((fcb(1.05*s0)-fcb(s0))/fcb(s0), digits=2))", fontsize=10, horizontalalignment="center")
+text(0, -0.24, "Δs/s=–0.05\nΔC/C=+$(round((fcb(0.95*s0)-fcb(s0))/fcb(s0), digits=2))", fontsize=10, horizontalalignment="center")
+text(0.8, 1/2, "0", fontsize=10, verticalalignment="center", horizontalalignment="center")
+tight_layout()
+[ savefig("cloudbase_cloudfrac_sensitivity.$f") for f in ["png", "pdf", "svg", "eps"] ]
+
+"cloud base cloud fraction as a function of normalized saturation deficit \$s\$"
+fcb(s) = 0.5*(1 - erf(s))
+s0 = 1.13 # gives observed cloud fraction of 5.5 % at cloud base
+s = 0.95:0.01:1.05 .* s0
+plot(s, fcb.(s))
+
+dlnfcb_dlns = (diff(fcb.(s)[[1 end]][:])/0.055) / 0.1 # -3.2
