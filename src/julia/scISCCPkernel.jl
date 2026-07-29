@@ -446,7 +446,7 @@ fbct_sw_cre_kernel = [
  15.5884   57.0098  91.7088  123.456   147.007  167.925
  13.1715   53.8972  92.0407  130.11    155.798  174.39
   4.31043  38.7438  80.809   125.422   154.941  173.838 ]
-fbct_sw_cre_histogram = -0.01*fbct_histogram.*fbct_sw_cre_histogram
+fbct_sw_cre_histogram = -0.01*fbct_histogram.*fbct_sw_cre_kernel
 
 # add the FBCT histogram to the plot
 fig, axs = subplots(2, 2, figsize=(8, 6))
