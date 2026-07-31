@@ -147,7 +147,7 @@ function update_albedo_profile!(
 
     # radiative calculations for each pixel
     tau_scaled = calc_tau_scaled.(particle_size, tau)
-    albedo = albedo_kernel.(tau_scaled) # hemispheric avg cloud albedo
+    albedo_cloud = albedo_kernel.(tau_scaled) # hemispheric avg cloud albedo
     cloud_frac = cloud_frac_proxy.(sw_albedo, albedo_cloud)
 
 
