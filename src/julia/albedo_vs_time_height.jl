@@ -191,8 +191,10 @@ function update_albedo_profile!(
 end
 
 """
-count cloudy and clear pixels as a function of height.
-count pixels, reflectance weighted pixels, and albedo weighted pixels.
+Count cloudy and clear pixels as a function of height.
+Count pixels, reflectance weighted pixels, and albedo weighted pixels.
+Writes a netcdf file with the time series of profiles.
+Returns the last profile.
 """
 function compile_albedo_profile(lat_bounds, lon_bounds, data_file_list, fileout)
     height_bins = 0.0:10.0:4000.0
