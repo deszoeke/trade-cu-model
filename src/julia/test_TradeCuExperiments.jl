@@ -158,7 +158,7 @@ open("cloud_frac_table.txt", "w") do io
         println("-"^30)
         for exp in ["subsidence-5%", "Ecb+2%", "q&qs+7%", "lclRH+0.003", "lclRH+0.006"]
             println(@sprintf("%-15s | %10.2f", exp, 
-                100*dlna_itp_ztop(   ExpDict[exp], ExpDict["control"]) ) )
+                100*(Base.exp(dlna_itp_ztop(   ExpDict[exp], ExpDict["control"]) )-1) ) )
         end
     end
 end
@@ -445,7 +445,7 @@ idx = round.(Int32, range(1; stop=600, length=15))
 fig = gcf(); fig.set_size_inches([9.6, 5]);
 fig.clf()
 ax = fig.add_subplot(1, 1, 1)
-ax.plot(ExpDict["control"].output.w[:,idx], ctx.z/1e3, linewidth=0.6, label="control")
+ax.plot(ExpDict["control"].output.w[:,idx], ctx.z/1e3, linewidth=1, label="control")
 # ax.plot(ExpDict["sink-5%"].output.w[:,1:20:end], ctx.z/1e3, color="tab:blue", label="sink-5%")
 # ax.plot(ExpDict["sink+5%"].output.w[:,1:20:end], ctx.z/1e3, color="tab:orange", label="sink+5%")
 ax.set_ylim([0.6, 3.01])
@@ -473,26 +473,6 @@ y = y0 * (x/x0)^p
 """
 plotl(x, y0, p) = loglog(x, y0 * (x./x[1]).^p) 
 plotlz(z, x0, p) = loglog(x0 * (z./z[1]).^p, z) 
-
-clf()
-loglog(sinkz, a_i, linestyle="none", marker=".")
-plotl([6.55e-4, 6e-4], 1.5e-4, 10)
-xlim([6e-4, 1e-3]); ylim([1e-4, 2e-4])
-# so at low tot_sink (hi clouds), a = 1.5e-4 * (tot_sink/6.55e-4)^10
-
-clf()
-loglog( a_i, ctx.z/1e3, marker=".")
-ylim([2.5,4.1])
-plotlz([2.5, 4.1], 3.1e-4, -5.5)
-# above 3 km, extrapolate that cloud fraction decreases as 
-# a = (3e-4/10 m) (z/2.5 km)^-5.5
-
-# graph shifting the sink rate by ±5%
-clf()
-loglog(     sinkz, a_i)
-loglog(0.95*sinkz, a_i, ":")
-loglog(1.05*sinkz, a_i, ":")
-# Cloud fraction is so small at the low-sink end that no extrapolation is recommended.
 
 # plot sink rate parameter ensembles for mesoscale experiments
 clf()
