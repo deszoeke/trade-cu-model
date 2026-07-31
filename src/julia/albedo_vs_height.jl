@@ -55,9 +55,9 @@ asym_parameter_kernel = asym_parameter(10.0) # 0.858 for 10 micron effective rad
 tau_fac(r_e) = (1-asym_parameter(r_e)) / (1-asym_parameter_kernel)
 calc_tau_scaled(r_e, tau) = tau * tau_fac(r_e)
 "albedo asymptotically matching radiative calculations of kernel"
-function albedo_kernel(tau_scaled, sza=90.0, r_e=10.0)
-    omgts = (1-asym_parameter(r_e)) * tau_scaled
-    omgts / (2*cosd(sza) + omgts)
+function albedo_kernel(tau_scaled; asym_parameter_kernel=asym_parameter_kernel)
+    omgts = (1-asym_parameter_kernel) * tau_scaled
+    omgts / (2 + omgts) # no μ_0 for hemisphic avg
 end
 
 
@@ -114,8 +114,8 @@ function update_albedo_profile!(
 
     # radiative calculations for each pixel
     tau_scaled = calc_tau_scaled.(particle_size, tau)
-    albedo = albedo_kernel.(tau_scaled, pixel_sza, particle_size) # cloud albedo
-
+    albedo = albedo_kernel.(tau_scaled) # hemispheric avg cloud albedo
+ 
     # ISCCP-consistent binary classification: cloudy if retrieval produced a valid tau
     cloud_mask = .!isnan.(tau) .& (tau .> 0.0)
 
