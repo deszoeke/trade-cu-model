@@ -104,8 +104,8 @@ function setup_experiments(; ctx::ModelContext)
     # tot_sink = range(6.1716e-4, 5.8e-3, length=600) # min tuned for x=0.53 to get the highest possible cloud top
 
     z = ctx.z
-    qm = ctx.qm
-    qs = ctx.qs
+    qm = filt_rfv(ctx.qm)
+    qs = filt_rfv(ctx.qs)
     dz = ctx.dz
     # icb = findfirst(z .>= zcb) # cloud base index
 

@@ -287,7 +287,7 @@ function get_mean_soundings(ds=get_sounding_dataset())
     return z, tam, thm, qm, pm
 end
 
-# get An-Yi's aggregated GOES cloud fraction vs height data
+#= get An-Yi's aggregated GOES cloud fraction vs height data
 function get_goes_cloud_data()
     NCDataset("../../data/satellite/GOES-16/goes16_binned_low4km_20200115_20200219.nc") do dsa
         rfv_nrm = tmean(dsa[:rfv_nrm][:,:]) # skipmissing: don't let fill values on individual days blank low-height bins
@@ -296,6 +296,18 @@ function get_goes_cloud_data()
         return rfv_nrm, rfv_acc, cth_bin
     end
 end
+=#
+# replace with 
+# get Simon's GOES albedo-weighted cloud fraction
+function get_goes_cloud_data()
+    NCDataset("../../data/satellite/GOES-16/shcu_cloud_albedo_refl_profile_mean.nc") do dsa
+        rfv_nrm = dsa[:albedo_profile][:] # skipmissing: don't let fill values on individual days blank low-height bins
+        rfv_acc = reverse(cumsum(reverse(rfv_nrm)))
+        cth_bin = dsa[:cloud_top_height][:] # m
+        return rfv_nrm, rfv_acc, cth_bin
+    end
+end
+
 
 # data structures for experiments
 
@@ -470,6 +482,22 @@ function calcF2(G, rfv_acc, offset; sk)
     return calcF2_(align2i(G), rfv_acc; sk=sk) # inputs not aligned
 end
 =#
+
+# large-scale subsidence vertical velocity (m/s)
+subsidence(z_; divg=divg, zi=zi) = -min(z_, zi) * divg
+"interpolate the derivative dq/dz at z_"
+ddz(q=qm, z=ctx.z) = interpolate_ascending( z[1:end-1].+0.5*diff(z), diff(q) ./ diff(z) ) # returns a function of z_
+dqdz(z) = ddz(qm, ctx.z)(z)
+"""
+large-scale drying profile S_ls(z) = -w*dq/dz - 1.7e-8*(zdivg-z)/zdivg
+kg/kg s^-1
+"""
+function largescale_drying(z_; q=qm, z=ctx.z, divg=divg, sfc_adv=sfc_adv, zdivg=4e3)
+    # zdivg = 4e3 # m; top height
+    dqdz(z_) = ddz(q, z)(z_)
+    wdqdz = subsidence(z_; divg=divg, zi=zdivg) * dqdz(z_)
+    -wdqdz - sfc_adv * max(0, (zdivg - z_) ./ zdivg) # advection increases to sfc_adv at surface
+end
 
 """
 large-scale all-sky moisture flux profile total G_tot 
