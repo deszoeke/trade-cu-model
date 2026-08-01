@@ -87,8 +87,8 @@ function update_isccp_accumulation!(
     lon_bounds::Tuple{Float64, Float64},
     tau_edges::Vector{T},
     pc_edges::Vector{T};
-    vza_thr = 60.0, 
-    sza_thr = 60.0 ) where T <: Real
+    vza_thr = 75.0, 
+    sza_thr = 75.0 ) where T <: Real
 
     if !isfile(nc_file)
         println("Warning: file not found: ", nc_file)
