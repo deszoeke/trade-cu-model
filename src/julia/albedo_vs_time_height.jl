@@ -293,85 +293,85 @@ daylight_file(s) = 1200 <= parse(Int,match(r"(\d{4})\.PX\.02K\.NC$", s).captures
 sza_thr = 75.0
 vza_thr = 75.0
 data_file_list = filter(daylight_file, readdir(joinpath(datadir, "GOES/all"))) # [1:3]
-height_bins=0.0:10.0:4000.0
-
-# Compile albedo and reflectance-weighted cloud counts
-fileout =joinpath(datadir, "shcu_cloud_albedo_refl_profile_ts.nc")
-(   albedo_c_profile_accumulator,
-    albedo_profile_accumulator,
-    reflec_profile_accumulator,
-    cloudf_profile_accumulator,
-    cloud_profile_count,
-    cloud_all_count,
-    clear_all_count,
-    total_all_count ) = compile_albedo_profile(
-        lat_bounds, lon_bounds, data_file_list[:], fileout )
-
-# ==============================================================================
-# 4. NORMALIZE FRACTIONS below 4 km for last file
-# ==============================================================================
-cloud_low_count = sum(cloud_profile_count)
-clear_and_low_count = clear_all_count[1] + cloud_low_count # not obscured
-albedo_c_profile = albedo_c_profile_accumulator ./ clear_and_low_count
-albedo_profile = albedo_profile_accumulator ./ clear_and_low_count
-reflec_profile = reflec_profile_accumulator ./ clear_and_low_count
-cloudf_profile = cloudf_profile_accumulator ./ clear_and_low_count
-cloud_profile  = cloud_profile_count        ./ clear_and_low_count
-cloud_total_frac = cloud_all_count[1] / total_all_count[1]
-clear_total_frac = clear_all_count[1] / total_all_count[1]
-
-begin
-    println("Total pixel count: ", total_all_count[1])
-    println("Regional pure clear pixel fraction: ", round(100*clear_total_frac, digits=2), " %")
-    println("Regional cloudy pixel fraction: ", round(100*cloud_total_frac, digits=2), " %")
-    println("Regional mean albedo: ", round(sum(albedo_profile), digits=3))
-    println("Regional mean reflectance: ", round(sum(reflec_profile), digits=3))
-    println("albedo/reflectance fraction ratio: ", round(sum(albedo_profile)/sum(reflec_profile), digits=3))
-end
-
-# record accumulations not stored or saved here !
-
 height_bins = 0.0:10.0:4000.0
 nh = length(height_bins)
 
-# plot the first few profiles
-clf()
-for fi = 1:5
-    Dataset(fileout, "r") do dsin
-        # Get the index you want to read (e.g., the first record)
+# Compile albedo and reflectance-weighted cloud counts
+fileout =joinpath(datadir, "shcu_cloud_albedo_refl_profile_ts.nc")
+if false
+    (   albedo_c_profile_accumulator,
+        albedo_profile_accumulator,
+        reflec_profile_accumulator,
+        cloudf_profile_accumulator,
+        cloud_profile_count,
+        cloud_all_count,
+        clear_all_count,
+        total_all_count ) = compile_albedo_profile(
+            lat_bounds, lon_bounds, data_file_list[:], fileout )
 
-        # --- Read a single record matching your variables ---
-        # (Note: time reads back directly as a Julia DateTime object)
-        dt_parsed        = dsin["time"][fi]
-        albedo_c_profile = dsin["albedo_c_profile"][:, fi]
-        albedo_profile   = dsin["albedo_profile"][:, fi]
-        reflec_profile   = dsin["reflec_profile"][:, fi]
-        cloudf_profile   = dsin["cloudf_profile"][:, fi]
-        cloud_profile    = dsin["cloud_profile"][:, fi]
-        cloud_total_frac = dsin["cloud_total_frac"][fi]
-        clear_total_frac = dsin["clear_total_frac"][fi]
-        total_all_count  = dsin["total_all_count"][fi]
+    # ==============================================================================
+    # 4. NORMALIZE FRACTIONS below 4 km for last file
+    # ==============================================================================
+    cloud_low_count = sum(cloud_profile_count)
+    clear_and_low_count = clear_all_count[1] + cloud_low_count # not obscured
+    albedo_c_profile = albedo_c_profile_accumulator ./ clear_and_low_count
+    albedo_profile = albedo_profile_accumulator ./ clear_and_low_count
+    reflec_profile = reflec_profile_accumulator ./ clear_and_low_count
+    cloudf_profile = cloudf_profile_accumulator ./ clear_and_low_count
+    cloud_profile  = cloud_profile_count        ./ clear_and_low_count
+    cloud_total_frac = cloud_all_count[1] / total_all_count[1]
+    clear_total_frac = clear_all_count[1] / total_all_count[1]
 
-        subplot(1,2,1)
-        plot(100*albedo_profile, height_bins/1e3, linewidth=0.3, color="tab:blue", label="albedo-fraction")
-        plot(100*reflec_profile, height_bins/1e3, linewidth=0.3, color="tab:orange", label="reflectance-fraction")
-        plot(100*cloud_profile, height_bins/1e3, linewidth=0.3, color="k", label="cloud fraction")
-        # legend(frameon=false)
-        xlim([-0.0002, 0.6]); ylim([0, 4])
-        xlabel("cloud amount per 10 m height bin (%)")
-        ylabel("height (km)")
-        subplot(1,2,2)
-        plot(cumsum(reverse(albedo_profile)), reverse(height_bins)/1e3, linewidth=0.3, color="tab:blue", label="albedo-fraction")
-        plot(cumsum(reverse(reflec_profile)), reverse(height_bins)/1e3, linewidth=0.3, color="tab:orange", label="reflectance-fraction")
-        plot(cumsum(reverse(cloud_profile)), reverse(height_bins)/1e3, linewidth=0.3, color="k", label="0.1x cloud fraction")
-        xlabel("cumulative cloud amount")
-        xlim([-0.0005, 0.7]); ylim([0, 4])
+    begin
+        println("Total pixel count: ", total_all_count[1])
+        println("Regional pure clear pixel fraction: ", round(100*clear_total_frac, digits=2), " %")
+        println("Regional cloudy pixel fraction: ", round(100*cloud_total_frac, digits=2), " %")
+        println("Regional mean albedo: ", round(sum(albedo_profile), digits=3))
+        println("Regional mean reflectance: ", round(sum(reflec_profile), digits=3))
+        println("albedo/reflectance fraction ratio: ", round(sum(albedo_profile)/sum(reflec_profile), digits=3))
     end
+
+    # record accumulations not stored or saved here !
+
+    # plot the first few profiles
+    clf()
+    for fi = 1:5
+        Dataset(fileout, "r") do dsin
+            # Get the index you want to read (e.g., the first record)
+
+            # --- Read a single record matching your variables ---
+            # (Note: time reads back directly as a Julia DateTime object)
+            dt_parsed        = dsin["time"][fi]
+            albedo_c_profile = dsin["albedo_c_profile"][:, fi]
+            albedo_profile   = dsin["albedo_profile"][:, fi]
+            reflec_profile   = dsin["reflec_profile"][:, fi]
+            cloudf_profile   = dsin["cloudf_profile"][:, fi]
+            cloud_profile    = dsin["cloud_profile"][:, fi]
+            cloud_total_frac = dsin["cloud_total_frac"][fi]
+            clear_total_frac = dsin["clear_total_frac"][fi]
+            total_all_count  = dsin["total_all_count"][fi]
+
+            subplot(1,2,1)
+            plot(100*albedo_profile, height_bins/1e3, linewidth=0.3, color="tab:blue", label="albedo-fraction")
+            plot(100*reflec_profile, height_bins/1e3, linewidth=0.3, color="tab:orange", label="reflectance-fraction")
+            plot(100*cloud_profile, height_bins/1e3, linewidth=0.3, color="k", label="cloud fraction")
+            # legend(frameon=false)
+            xlim([-0.0002, 0.6]); ylim([0, 4])
+            xlabel("cloud amount per 10 m height bin (%)")
+            ylabel("height (km)")
+            subplot(1,2,2)
+            plot(cumsum(reverse(albedo_profile)), reverse(height_bins)/1e3, linewidth=0.3, color="tab:blue", label="albedo-fraction")
+            plot(cumsum(reverse(reflec_profile)), reverse(height_bins)/1e3, linewidth=0.3, color="tab:orange", label="reflectance-fraction")
+            plot(cumsum(reverse(cloud_profile)), reverse(height_bins)/1e3, linewidth=0.3, color="k", label="0.1x cloud fraction")
+            xlabel("cumulative cloud amount")
+            xlim([-0.0005, 0.7]); ylim([0, 4])
+        end
+    end
+
+    # [ savefig(joinpath(datadir, "shcu_cloud_albedo_refl_profile.$f")) for f in ["png", "pdf", "svg", "eps" ] ]
 end
 
-# [ savefig(joinpath(datadir, "shcu_cloud_albedo_refl_profile.$f")) for f in ["png", "pdf", "svg", "eps" ] ]
-
-# read the whole file with the same variable names
+# read the whole output file with the same variable names
 (  time,
    cloud_top_height,
    albedo_c_profile,
