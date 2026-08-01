@@ -219,7 +219,7 @@ data_file_list = filter(daylight_file, readdir(joinpath(datadir, "GOES/all"))) #
 # copy the variables we want
 # ncks -A -C -v plev_bnds,tau_bnds,plev,tau obs_cloud_kernels4.nc shcu_isccp_cloud_pct.nc
 filename = joinpath(datadir, "shcu_isccp_cloud_pct4.nc")
-if false
+if true | false
     # Compile the ISCCP histograms across the domain track
     (   albedo_mean_accumulator,
         isccp_cloudy_accumulator, 

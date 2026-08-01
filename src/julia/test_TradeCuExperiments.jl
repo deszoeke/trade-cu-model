@@ -154,7 +154,7 @@ end
 open("cloud_frac_table.txt", "w") do io
     redirect_stdout(io) do
         println("cloud fraction, % change from control")
-        println(@sprintf("%-15s | %10s", "experiment", "dlna")) # interpolating to ztop
+        println(@sprintf("%-15s | %10s", "experiment", "ΔC/C")) # interpolating to ztop
         println("-"^30)
         for exp in ["subsidence-5%", "Ecb+2%", "q&qs+7%", "lclRH+0.003", "lclRH+0.006"]
             println(@sprintf("%-15s | %10.2f", exp, 
@@ -461,7 +461,7 @@ ax.plot(1e3*(ExpDict["control"].output.qc[:,idx].-ExpDict["control"].input.qm[:]
 ax.plot(1e3*max.(0, (ExpDict["control"].output.qc[:,idx].-ExpDict["control"].input.qs[:])), 
     ctx.z/1e3, linewidth=0.6, color="tab:orange",label="control")
 ax.set_ylim([0.6, 3.02])
-ax.set_xlabel("cloud specific humidity \$q_c-q\$ (g/kg)")
+ax.set_xlabel("cloud specific humidity difference \$q_c-q\$ (g/kg)")
 ax.set_ylabel("height (km)")
 # text(0, 1.5, "strong sink rate", fontsize=14)
 text(5, 1.5, "weak sink rate", fontsize=14)
@@ -474,6 +474,7 @@ y = y0 * (x/x0)^p
 plotl(x, y0, p) = loglog(x, y0 * (x./x[1]).^p) 
 plotlz(z, x0, p) = loglog(x0 * (z./z[1]).^p, z) 
 
+#=
 # plot sink rate parameter ensembles for mesoscale experiments
 clf()
 subplot(2,2,1)
@@ -497,3 +498,4 @@ ylabel("cloud fraction (10\$^{-3}\$)")
 xlim([0, 6])
 tight_layout()
 suptitle("sink rates for mesoscale experiments")
+=#
