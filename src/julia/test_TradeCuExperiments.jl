@@ -65,7 +65,7 @@ function good_sinks(controlsink; zb=700.0, zt=4000.0)
 end
 ztop, sinkz, acc, acld = good_sinks(controlsink);
 
-# deprecate control-sink and DIMsink experiments.
+#= deprecate control-sink and DIMsink experiments.
 
 # DIM experiments with different sink rates, to simulate mesoscale organization changes
 DIMsink = define_experiment(controlsink; 
@@ -92,6 +92,7 @@ end
 # w_i is invariant from the control experiment, stretching w profile from old ztop to new ztop.
 # a_i = new_area( ExpDict["DIMsink"], ExpDict["control-sink"], ctx )
 # possibly only cloud BASE mass flux is a good indicator of cloud fraction.
+=#
 
 # quick count of valid fields
 good(x) = !ismissing(x) && isfinite(x)
@@ -225,7 +226,7 @@ end
 # plot cumulative cloud fraction vs. cloud top height for mesoscale experiments
 
 # print readable table for E2 sink rate experiments
-begin
+if (false) && begin
     println("cloud fraction, % change from control")
     println(@sprintf("%-15s | %10s", "experiment", "dlna")) # interpolating to ztop
     println("-"^30)
