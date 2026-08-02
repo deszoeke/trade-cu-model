@@ -168,41 +168,46 @@ function plot_lclRH_experiments(ctx, ExpDict)
     # [ savefig("lclRH_experiments.$(fmt)") for fmt in ["png", "svg", "pdf"] ]
 end
 
-tradeCuModelDataFile = "/Users/deszoeks/Projects/ATOMIC/trade-cu-model/data/tradeCu_clouds_flux_xp53_cb700.nc"
+# tradeCuModelDataFile = "/Users/deszoeks/Projects/ATOMIC/trade-cu-model/data/tradeCu_clouds_flux_xp53_cb700.nc"
 
 "write_nc_model_run(...) writes the model run data to a NetCDF file"
 function write_nc_model_run(tradeCuModelDataFile, 
     z, ztop, tot_sink, F_cld, F_pcp, G_cld, G_pcp,
     w, M, acld, qc, qm, qs)
     ntp = 500
-    perm=(2,1)
-    poot(A) = (permutedims(A)) # makes NetCDF compliant
+    poot(A) = ((coalesce.(A, NaN))) # makes NetCDF compliant
 
     # do block auto closes file
     NCDataset( tradeCuModelDataFile, "a", format=:netcdf4 ) do df
         # coordinates
         df[:height][:] = z[1:ntp]
-        df[:total_sink_rate][:] = tot_sink
-        # dependent variables
-        df[:cloud_top_height][:] = pd(ztop)
+        df[:total_sink_rate][1:length(tot_sink)] = tot_sink[:]
 
-        df[:flux_incloud_cloud][:,:] = (permutedims(F_cld[1:ntp,:], perm))
+        # dependent variables
+        df[:cloud_top_height][:] = ztop[:]
+
+        df[:flux_incloud_cloud][:,:] = poot(F_cld[1:ntp,:])
         df[:flux_incloud_eddy][:,:] = poot((F_cld .+ F_pcp)[1:ntp,:]) # F2z[h_i]
         sync(df)
         df[:flux_incloud_precip][:,:] = poot(F_pcp[1:ntp,:])
-        df[:flux_allsky_cloud][:,:] = (permutedims(G_cld[1:ntp,:], perm))
-        df[:flux_allsky_eddy][:,:] = poot((G_cld .+ G_pcp)[1:ntp,:]) # F2z[h_i]
+        
+        println("size(G_cld) = ", size(G_cld))
+
+        df[:flux_allsky_cloud][:,:] = poot(G_cld[1:ntp,:])
+        df[:flux_allsky_eddy][:,:] = poot((G_cld .+ G_pcp)[1:ntp,:])
         sync(df)
         df[:flux_allsky_precip][:,:] = poot(G_pcp[1:ntp,:])
         df[:vert_vel][:,:]   = poot(w[1:ntp,:])
         sync(df)
         df[:mass_flux][:,:] = poot(M[1:ntp,:])
-        df[:cloud_fraction][:,:] = poot(acld[1:ntp,:])
+        df[:cloud_fraction][:] = acld[:]
+        sync(df)
 
         df[:q_total_cloud][:,:] = poot(qc[1:ntp,:])
         df[:q_env][:] = (qm[1:ntp])
         df[:q_sat_env][:] = (qs[1:ntp])
-        sync(df)
+
+        return nothing
     end
 end
 function write_nc_model_run( tradeCuModelDataFile, 
