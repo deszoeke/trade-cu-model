@@ -210,8 +210,7 @@ function write_nc_model_run(tradeCuModelDataFile,
         return nothing
     end
 end
-function write_nc_model_run( tradeCuModelDataFile, 
-    ctx::ModelContext, expmt::Experiment )
+function write_nc_model_run( tradeCuModelDataFile, ctx::ModelContext, expmt::Experiment )
 
     write_nc_model_run( tradeCuModelDataFile, 
     ctx.z, expmt.output.ztop, expmt.input.tot_sink, 

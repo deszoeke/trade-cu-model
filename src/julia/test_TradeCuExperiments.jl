@@ -45,8 +45,14 @@ font_settings = Dict(
 )
 matplotlib.rcParams.update(font_settings)
 
-# experiment with sink rate fixed by the control
+# a dictionary of experiments
+# and a controlsink experiment with sink rate fixed to the control
 ctx, ExpDict, controlsink, sinkm5, sinkp5 = test_control_sink();
+
+#= save the control experiment to a netcdf file
+    tradeCuModelDataFile = "/Users/deszoeks/Projects/ATOMIC/trade-cu-model/data/tradeCu_clouds_flux_xp53_cb700.nc"
+    write_nc_model_run( tradeCuModelDataFile, ctx, ExpDict["control"] )
+=#
 
 # load standard parameters
 ( qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv,
@@ -226,13 +232,15 @@ end
 # plot cumulative cloud fraction vs. cloud top height for mesoscale experiments
 
 # print readable table for E2 sink rate experiments
-if (false) && begin
-    println("cloud fraction, % change from control")
-    println(@sprintf("%-15s | %10s", "experiment", "dlna")) # interpolating to ztop
-    println("-"^30)
-    for exp in ["DIMsink", "DIMsink-5%", "DIMsink+5%"]
-        println(@sprintf("%-15s | %10.2f", exp, 
-            100*dlna_sameinds( ExpDict[exp], ExpDict["control-sink"]) ) )
+if false
+    begin
+        println("cloud fraction, % change from control")
+        println(@sprintf("%-15s | %10s", "experiment", "dlna")) # interpolating to ztop
+        println("-"^30)
+        for exp in ["DIMsink", "DIMsink-5%", "DIMsink+5%"]
+            println(@sprintf("%-15s | %10.2f", exp, 
+                100*dlna_sameinds( ExpDict[exp], ExpDict["control-sink"]) ) )
+        end
     end
 end
 # interpolating to the original ztop gives very different results

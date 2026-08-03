@@ -93,7 +93,7 @@ end
 
 recurse(f, x, n) = n>0 ? f(recurse(f, x, n-1)) : x
 "abstractly composes f n times; recursef(f,3) = f∘f∘f = x->f(f(f(x))), without evaluating"
-recursef(f,n) = reduce(∘, ntuple(_ -> f, n)) # doesn't evaluate to a value nicely
+# recursef(f,n) = reduce(∘, ntuple(_ -> f, n)) # doesn't evaluate to a value nicely
 
 "declare arrays with elements of Union{Missing,T} unions"
 similarmissing(s::Tuple, T::Type=Float64) = Array{Union{Missing, T}}(missing, s)
