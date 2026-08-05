@@ -37,7 +37,7 @@ PythonPlot.matplotlib.rcParams["font.sans-serif"] = ["Helvetica", "Arial", "Open
 # make fonts bigger by mutating rcParams
 font_settings = Dict(
     "font.size" => 14,       # Base size
-    "axes.titlesize" => 18,  # Subplot titles
+    "axes.titlesize" => 16,  # Subplot titles
     "axes.labelsize" => 16,  # X/Y labels
     "xtick.labelsize" => 14, # X-axis numbers
     "ytick.labelsize" => 14, # Y-axis numbers
@@ -508,3 +508,9 @@ xlim([0, 6])
 tight_layout()
 suptitle("sink rates for mesoscale experiments")
 =#
+
+ctl = ExpDict["control"]
+TradeCuModel.plot_qv_qc_w(ctl.input.tot_sink, ctx.z, 
+    ctl.output.acld, ctl.output.ztop, ctl.output.qc,
+    ctl.output.F_cld, ctl.output.w, ctl.input.qm, ctl.input.qs)
+# [ fig.savefig("control_qv_qc_w.$f") for f in ["png", "pdf", "svg", "eps"] ]

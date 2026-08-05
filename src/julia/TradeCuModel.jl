@@ -1109,7 +1109,7 @@ function plot_qv_qc_w(tot_sink, z, da_dsink, ztop, qtc, Fcld, w, qm, qs; x=0.53,
     
     figure(figsize=(9, 11))
 
-    subplot(5,2,1)
+    subplot(4,2,1)
     contourf(tot_sink*1e3, z[1:ntp]/1e3, qtc[1:ntp,:]*1e3, cmap=ColorMap("RdYlBu_r"))
     cb = colorbar()
     plot(tot_sink*1e3, ztop[:]/1e3, "k", label="cloud top height")
@@ -1118,7 +1118,7 @@ function plot_qv_qc_w(tot_sink, z, da_dsink, ztop, qtc, Fcld, w, qm, qs; x=0.53,
     title("total cloud specific humidity (g kg\$^{-1}\$)")
     text(0.05, 3.4, "a")
 
-    subplot(5,2,3)
+    subplot(4,2,3)
     contourf(tot_sink*1e3, z[1:ntp]/1e3, dq[1:ntp,:]*1e3, levels=0:0.5:10, vmin=0, vmax=10, cmap=ColorMap("RdYlBu_r"))
     cb = colorbar()
     contour(tot_sink*1e3, z[1:ntp]/1e3, max.(0,qtc[1:ntp,:].-qs[1:ntp])*1e3, levels=0:0.2:3, vmin=0, vmax=3, colors="k", linewidths=0.5)
@@ -1129,7 +1129,7 @@ function plot_qv_qc_w(tot_sink, z, da_dsink, ztop, qtc, Fcld, w, qm, qs; x=0.53,
     ylabel("z (km)")
     text(0.05, 3.4, "b")
 
-    subplot(5,2,5)
+    subplot(4,2,5)
     levs = 0:0.05:0.5
     norm = PyPlot.matplotlib.colors.BoundaryNorm(levs, 256)
     pcolormesh(tot_sink*1e3, z[1:ntp]/1e3, w[1:ntp,:], norm=norm, cmap=ColorMap("RdYlBu_r"))
