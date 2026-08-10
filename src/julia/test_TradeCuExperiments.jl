@@ -35,13 +35,14 @@ pd = permutedims
 PythonPlot.matplotlib.rcParams["font.family"] = "sans-serif"
 PythonPlot.matplotlib.rcParams["font.sans-serif"] = ["Helvetica", "Arial", "OpenSans"]
 # make fonts bigger by mutating rcParams
+fsz = 12
 font_settings = Dict(
-    "font.size" => 14,       # Base size
-    "axes.titlesize" => 16,  # Subplot titles
-    "axes.labelsize" => 16,  # X/Y labels
-    "xtick.labelsize" => 14, # X-axis numbers
-    "ytick.labelsize" => 14, # Y-axis numbers
-    "legend.fontsize" => 14  # Legend text
+    "font.size" => fsz,         # Base size
+    "axes.titlesize" =>fsz+2,   # Subplot titles
+    "axes.labelsize" => fsz+2,  # X/Y labels
+    "xtick.labelsize" => fsz,   # X-axis numbers
+    "ytick.labelsize" => fsz,   # Y-axis numbers
+    "legend.fontsize" => fsz    # Legend text
 )
 matplotlib.rcParams.update(font_settings)
 
