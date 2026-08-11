@@ -3,6 +3,7 @@ using Revise
 # using Pkg; Pkg.activate(".")
 using NCDatasets
 using Dates
+using Printf
 using Statistics
 using LinearAlgebra
 using PythonPlot
@@ -67,6 +68,8 @@ time, cth_bin, rfv_nrm, rfv_acc = get_goes_cloud_ts()
 
 # first indices in each day (or after a gap of 6 hours)
 iday = [0; findall(diff(time) .> Hour(6))] .+ 1
+
+# temporal division
 # mean first 10 days
 ii = 1:iday[10+1]-1
 ii = findall(time .<= time[1] + Day(10))
@@ -106,8 +109,8 @@ U_physical, mode_stds, Vt, spatial_variance, total_matrix_variance = cf_modes(rf
 # resample with mean +- 1 std of the first 2 modes: 9 experiments
 "perturbation cloud fraction profile ∑ᵢ( coefsᵢ * U[:,i] )"
 cf_prime(coefs, U=U_physical) = U[:, 1:length(coefs)] * coefs
-# cf = cf0 .+ cf_prime([1.0, 1.0])
 
+# spatial mode statistics
 spatial_modes_variance = (U_scaled .^ 2) ./ (n - 1)
 total_variance_profile = sum(spatial_modes_variance, dims=2)
 cumulative_mode_variance = cumsum(spatial_modes_variance, dims=2)
@@ -140,6 +143,68 @@ tight_layout()
 # mode 3 is slightly higher 0.5-1 km clouds, and slightly lower trade inversion clouds
 
 for i=-1:1, j=-1:1
-    name = printf("cf %2d %2d", i, j)
+    name = @printf("cf %2d %2d\n", i, j)
     cf = cf_prime([i, j]) .+ cf0
 end
+
+# ( qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv,
+#     tot_sink, cth_bin, rfv_acc, rfv_nrm, 
+#     rho, rhoL, ns, nz ) = setup_experiments(ctx=ctx)
+ModelContext = TradeCuModel.ModelContext
+ctx = init_context()
+
+"initialize cloud fraction resampling experiments"
+function define_cf_experiments(; ctx::ModelContext, cf0=cf0, U=U_physical)
+
+    ( qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv,
+      tot_sink, cth_bin, rfv_acc, rfv_nrm, 
+      rho, rhoL, ns, nz ) = setup_experiments(ctx=ctx)
+      
+    icb = findfirst(ctx.z .>= zcb) # cloud base index
+    
+    # initialize control experiment input and output structures
+    control = define_experiment(; name="control", description="Control",
+        qm=qm, qs=qs, zcb=zcb, qcb=qcb, E_cb=E_cb, x=x, divg=divg, sfc_adv=sfc_adv, tot_sink=tot_sink, 
+        cth_bin=cth_bin, rfv_acc=rfv_acc, rfv_nrm=rfv_nrm, 
+        control=true, a_i_control=nothing, M_i_control=nothing )
+
+    # integrate control
+    integrate_experiment!(control, ctx=ctx)
+    # control a_i and M_i will scale a for experiments
+    a_i_control = control.output.acld # cloud area fraction for each cloud top height bin
+    M_i_control = control.output.M # mass flux for each cloud top height bin
+
+    # cf experiments: control experiments resample cloud fraction profiles,
+    # ±1 std of the first 2 modes
+    CfExpDict=Dict{String, TradeCuModel.Experiment}()
+    for i in -1:1, j in -1:1
+        # new cloud top height distribution resamples cloud fractions responsible
+        # for the moisture flux.
+        expname = @sprintf("cf %2d %2d", i, j)
+        cf    = TradeCuModel.filt_rfv( (cf_prime([i, j]) .+ cf0)[:] )
+        cumcf = reverse( cumsum(reverse( cf )) )
+
+        expmt = define_experiment( control; name=expname, 
+            description="cloud fraction resampled, mode1 $(i)σ, mode2 $(j)σ",
+            qm=qm, qs=qs, zcb=zcb, qcb=qcb, E_cb=E_cb, x=x, divg=divg, 
+            sfc_adv=sfc_adv, tot_sink=tot_sink, cth_bin=cth_bin, 
+            rfv_acc=cf, rfv_nrm=cumcf,
+            control=true, a_i_control=nothing, M_i_control=nothing )
+
+        push!(CfExpDict, expname => expmt)
+    end
+
+    return CfExpDict
+end
+
+# initialize cf experiments
+CfExpDict = define_cf_experiments(; ctx=ctx, cf0=cf0, U=U_physical)
+# run the experiments like control experiments
+for expmt in values(CfExpDict) # run all the defined experiments
+    integrate_experiment!(expmt, ctx=ctx)
+end
+
+# plot one
+pcolormesh(CfExpDict["cf  0  1"].input.tot_sink, ctx.z/1e3, 
+    CfExpDict["cf  0  1"].output.w, cmap=get_cmap("RdYlBu_r", 13))
+ylim([0, 4])
