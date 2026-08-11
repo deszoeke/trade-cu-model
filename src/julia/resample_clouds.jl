@@ -8,6 +8,8 @@ using LinearAlgebra
 using PythonPlot
 using PythonCall
 
+includet("TradeCuExperiments.jl")
+using .TradeCuExperiments
 
 # utility functions; extend matplotlib
 
@@ -76,32 +78,45 @@ plot( mean(rfv_nrm[:,ii], dims=2), cth_bin)
 
 # EOFs of temporal cloud fraction variability
 anom(x) = x .- mean(x, dims=2)
-A = anom(rfv_nrm)
-n = size(A, 2)
-# total variance profile directly from the matrix
-# var(A, dims=2) uses the standard (n - 1) normalization automatically
-spatial_variance = var(A, dims=2)
-total_matrix_variance = sum(spatial_variance)
 
-F = svd(A)
-U = F.U  # Spatial patterns (length = 401)
-S = F.S  # Singular values
-V = F.V  # Temporal patterns (length = 730)
-Vt = F.Vt # transpose for plotting
-U[:,1] .*= -1; V[1,:] .*= -1; Vt[:,1] .*= -1 # flip sign of first mode to match the mean profile
+function cf_modes(rfv_nrm)
+    A = anom(rfv_nrm)
+    n = size(A, 2)
+    # total variance profile directly from the matrix
+    # var(A, dims=2) uses the standard (n - 1) normalization automatically
+    spatial_variance = var(A, dims=2)
+    total_matrix_variance = sum(spatial_variance)
 
-mode_variances = S.^2 ./ (n - 1)
-U_scaled = U * Diagonal(S) # spatial modes
-mode_stds = S ./ sqrt(n - 1)
-U_physical = U * Diagonal(mode_stds)
+    F = svd(A)
+    U = F.U  # Spatial patterns (length = 401)
+    S = F.S  # Singular values
+    V = F.V  # Temporal patterns (length = 835)
+    Vt = F.Vt # transpose for plotting
+    U[:,1] .*= -1; V[1,:] .*= -1; Vt[:,1] .*= -1 # flip sign of first mode to match the mean profile
+
+    mode_variances = S.^2 ./ (n - 1)
+    U_scaled = U * Diagonal(S) # spatial modes
+    mode_stds = S ./ sqrt(n - 1)
+    U_physical = U * Diagonal(mode_stds) # spatial modes in physical units, fraction/10 m bin (std of cloud fraction)
+
+    return U_physical, mode_stds, Vt, spatial_variance, total_matrix_variance
+end
+U_physical, mode_stds, Vt, spatial_variance, total_matrix_variance = cf_modes(rfv_nrm)
+
+# resample with mean +- 1 std of the first 2 modes: 9 experiments
+"perturbation cloud fraction profile ∑ᵢ( coefsᵢ * U[:,i] )"
+cf_prime(coefs, U=U_physical) = U[:, 1:length(coefs)] * coefs
+# cf = cf0 .+ cf_prime([1.0, 1.0])
+
 spatial_modes_variance = (U_scaled .^ 2) ./ (n - 1)
 total_variance_profile = sum(spatial_modes_variance, dims=2)
 cumulative_mode_variance = cumsum(spatial_modes_variance, dims=2)
 
+# plot the vertical modes and their cumulative variance explained
 clf()
 subplot(1,2,1)
-plot([0,0], [0, 4], "k-", linewidth=0.5)
-plot(mean(rfv_nrm, dims=2), cth_bin/1e3, linewidth=1, color="k", label="10mean", linestyle="--")
+plot( [0,0], [0, 4], "k-", linewidth=0.5)
+plot( cf0, cth_bin/1e3, linewidth=1, color="k", label="10mean", linestyle="--")
 plot( U_physical[:,1:3], cth_bin/1e3, linewidth=2, label=["1" "2" "3"])
 plot( U_physical[:,4:6], cth_bin/1e3, linewidth=0.7)
 xlabel("cloud fraction modes")
@@ -110,9 +125,9 @@ ylim([0, 4])
 # legend(frameon=false)
 
 subplot(1,2,2)
-plot([0,0], [0, 4], "k-", linewidth=0.5)
-plot(sqrt.(spatial_variance), cth_bin/1e3, "k--", linewidth=1, label="total std")
-plot(sqrt.(cumulative_mode_variance[:,1:3]), cth_bin/1e3, linewidth=1.4)
+plot( [0,0], [0, 4], "k-", linewidth=0.5)
+plot( sqrt.(spatial_variance), cth_bin/1e3, "k--", linewidth=1, label="total std")
+plot( sqrt.(cumulative_mode_variance[:,1:3]), cth_bin/1e3, linewidth=1.4)
 xlabel("cloud fraction\ncumulative amplitude")
 ylim([0, 4])
 xlim([0, 3.5e-4])
@@ -124,4 +139,7 @@ tight_layout()
 # mode 2 adjusts the height of the trade cu cloud top (inversion height); moves cloud higher.
 # mode 3 is slightly higher 0.5-1 km clouds, and slightly lower trade inversion clouds
 
-# resample with mean +- 1 std of the first 2 modes
+for i=-1:1, j=-1:1
+    name = printf("cf %2d %2d", i, j)
+    cf = cf_prime([i, j]) .+ cf0
+end

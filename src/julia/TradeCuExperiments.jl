@@ -6,6 +6,7 @@
 
 includet("TradeCuModel.jl")
 
+#=
 using PythonPlot
 using Printf
 using Statistics
@@ -29,11 +30,14 @@ elseif @isdefined(PyPlot)
         pycall(numpy_ma.array, Any, coalesce.(a,zero(T)), mask=ismissing.(a))
     end
 end
+=#
 
 "Trade Cumulus Model Experiments Module"
 module TradeCuExperiments
 
 using ..TradeCuModel
+using PythonPlot
+using Printf
 using Statistics
 using NCDatasets
 using VaporSat # dev ../../deps/VaporSat
