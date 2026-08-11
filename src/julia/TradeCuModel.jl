@@ -301,7 +301,7 @@ end
 # get Simon's GOES albedo-weighted cloud fraction
 function get_goes_cloud_data()
     NCDataset("../../data/satellite/GOES-16/shcu_cloud_albedo_refl_profile_mean.nc") do dsa
-        rfv_nrm = dsa[:albedo_profile][:] # skipmissing: don't let fill values on individual days blank low-height bins
+        rfv_nrm = dsa[:albedo_c_profile][:] # skipmissing: don't let fill values on individual days blank low-height bins
         rfv_acc = reverse(cumsum(reverse(rfv_nrm)))
         cth_bin = dsa[:cloud_top_height][:] # m
         return rfv_nrm, rfv_acc, cth_bin
