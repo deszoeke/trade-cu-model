@@ -91,8 +91,9 @@ Vt = F.Vt # transpose for plotting
 U[:,1] .*= -1; V[1,:] .*= -1; Vt[:,1] .*= -1 # flip sign of first mode to match the mean profile
 
 mode_variances = S.^2 ./ (n - 1)
-
 U_scaled = U * Diagonal(S) # spatial modes
+mode_stds = S ./ sqrt(n - 1)
+U_physical = U * Diagonal(mode_stds)
 spatial_modes_variance = (U_scaled .^ 2) ./ (n - 1)
 total_variance_profile = sum(spatial_modes_variance, dims=2)
 cumulative_mode_variance = cumsum(spatial_modes_variance, dims=2)
@@ -100,9 +101,9 @@ cumulative_mode_variance = cumsum(spatial_modes_variance, dims=2)
 clf()
 subplot(1,2,1)
 plot([0,0], [0, 4], "k-", linewidth=0.5)
-plot(10*mean(rfv_nrm, dims=2), cth_bin/1e3, linewidth=1, color="k", label="10mean" )
-plot( U_scaled[:,1:3], cth_bin/1e3, linewidth=2, label=["1" "2" "3"])
-plot( U_scaled[:,4:6], cth_bin/1e3, linewidth=0.7)
+plot(mean(rfv_nrm, dims=2), cth_bin/1e3, linewidth=1, color="k", label="10mean", linestyle="--")
+plot( U_physical[:,1:3], cth_bin/1e3, linewidth=2, label=["1" "2" "3"])
+plot( U_physical[:,4:6], cth_bin/1e3, linewidth=0.7)
 xlabel("cloud fraction modes")
 ylabel("cloud top height (km)")
 ylim([0, 4])
@@ -110,7 +111,7 @@ ylim([0, 4])
 
 subplot(1,2,2)
 plot([0,0], [0, 4], "k-", linewidth=0.5)
-plot(sqrt.(spatial_variance), cth_bin/1e3, "k")
+plot(sqrt.(spatial_variance), cth_bin/1e3, "k--", linewidth=1, label="total std")
 plot(sqrt.(cumulative_mode_variance[:,1:3]), cth_bin/1e3, linewidth=1.4)
 xlabel("cloud fraction\ncumulative amplitude")
 ylim([0, 4])
@@ -122,3 +123,5 @@ tight_layout()
 # mode 1 is trade inversion cloud fraction (slightly obscures) low clouds.
 # mode 2 adjusts the height of the trade cu cloud top (inversion height); moves cloud higher.
 # mode 3 is slightly higher 0.5-1 km clouds, and slightly lower trade inversion clouds
+
+# resample with mean +- 1 std of the first 2 modes
