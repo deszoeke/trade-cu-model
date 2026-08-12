@@ -115,15 +115,21 @@ cx0 = mean(x, dims=2)
 # cf0 = cf_rx.(cx0)
 cf0 = mean(rfv_nrm[zz,:], dims=2) # mean cloud fraction profile in the 500-3100 m range
 U_physical, U_scaled, mode_stds, Vt, spatial_variance, total_matrix_variance = cf_modes(c)
+n = size(rfv_nrm, 2)
+# modes scaled to be anomalies of the mean cloud fraction profile
+# scale mode amplitude by 1/sqrt(n-1)
+U_mean = U_physical ./ sqrt( n - 1 )
 
 # resample with mean +- 1 std of the first 2 modes: 9 experiments
-"perturbation cloud fraction profile ∑ᵢ( coefsᵢ * U[:,i] )"
-cf_prime(coefs, U=U_physical) = U[:, 1:length(coefs)] * coefs
+"perturbation of the mean cloud fraction profile ∑ᵢ( coefsᵢ * U[:,i] )"
+cf_prime(coefs, U=U_mean) = U[:, 1:length(coefs)] * coefs
+
 clf()
 plot([0,0], [0, 4], "k-", linewidth=0.5)
 plot(cf0, z/1e3, "k--", linewidth=2)
 for i in -1:1, j in -1:1
-    plot((cf_prime([i, j]) .+ cf0)[:], z/1e3, label=@sprintf("%+d%+d", i, j))
+    plot((10*cf_prime([i, j]) .+ cf0)[:], z/1e3, label=@sprintf("%+d%+d", i, j))
+    i>=0 && j>=0 && plot((10*cf_prime([i, j]))[:], z/1e3)
 end
 legend(frameon=false)
 # 3 anomalous resamplings have negative cloud fraction: 0,+1; +1,-1; +1,+1
@@ -134,7 +140,6 @@ legend(frameon=false)
 # --  0-  +-X
 # -0  00  +0
 # -+  0+X ++X
-
 spatial_modes_variance = (U_scaled .^ 2) ./ (n - 1)
 total_variance_profile = sum(spatial_modes_variance, dims=2)
 cumulative_mode_variance = cumsum(spatial_modes_variance, dims=2)
@@ -143,34 +148,35 @@ cumulative_mode_variance = cumsum(spatial_modes_variance, dims=2)
 clf()
 subplot(1,2,1)
 plot( [0,0], [0, 4], "k-", linewidth=0.5)
-plot( cf0, z/1e3, linewidth=1, color="k", label="10mean", linestyle="--")
-plot( U_physical[:,1:3], z/1e3, linewidth=2, label=["1" "2" "3"])
-plot( U_physical[:,4:6], z/1e3, linewidth=0.7)
+plot( cf0, z/1e3, linewidth=1, color="k", label="mean", linestyle="--")
+plot( U_physical[:,1:3] .* [-1, -1, -1]', z/1e3, linewidth=2, label=["mode 1" "mode 2" "mode 3"])
+plot( U_physical[:,4:6], z/1e3, linewidth=0.5, color="gray")
 xlabel("cloud fraction modes")
 ylabel("cloud top height (km)")
-ylim([0, 4])
-# legend(frameon=false)
+ylim([0, 3.5])
+xlim([-2e-4, 6e-4])
+legend(frameon=false)
 
 subplot(1,2,2)
-plot( [0,0], [0, 4], "k-", linewidth=0.5)
+# plot( [0,0], [0, 4], "k-", linewidth=0.5)
 plot( sqrt.(spatial_variance), z/1e3, "k--", linewidth=1, label="total std")
 plot( sqrt.(cumulative_mode_variance[:,1:3]), z/1e3, linewidth=1.4)
-xlabel("cloud fraction\ncumulative amplitude")
-ylim([0, 4])
+xlabel("cloud fraction\ncumulative standard deviation")
+ylim([0, 3.5])
 xlim([0, 3.5e-4])
 tight_layout()
+# for f in ["svg", "png", "pdf", "eps"]
+#     savefig("cf_modes." * f)
+# end
+
 # amplitude converges to the total std at each height
 # first 3 modes explain 0.8-0.9 of the total variance
 
-# mode 1 is trade inversion cloud fraction (slightly obscures) low clouds.
-# mode 2 adjusts the height of the trade cu cloud top (inversion height); moves cloud higher.
-# mode 3 is slightly higher 0.5-1 km clouds, and slightly lower trade inversion clouds
+# mode 1 "more" is trade inversion cloud fraction (slightly obscures) low clouds.
+# mode 2 "higher" trade inversion clouds (2-3 km), adjusts the height of the trade cu cloud top (inversion height); moves cloud higher.
+# mode 3 "low" has more 0.5-1 km clouds, and vertically limited trade inversion clouds
 
-for i=-1:1, j=-1:1
-    name = @printf("cf %2d %2d\n", i, j)
-    cf = cf_prime([i, j]) .+ cf0
-    plot(cf, z/1e3)
-end
+
 
 # ( qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv,
 #     tot_sink, cth_bin, rfv_acc, rfv_nrm, 
@@ -179,7 +185,7 @@ ModelContext = TradeCuModel.ModelContext
 ctx = init_context()
 
 "initialize cloud fraction resampling experiments"
-function define_cf_experiments(; ctx::ModelContext, cf0=cf0, U=U_physical)
+function define_cf_experiments(; ctx::ModelContext, cf0=cf0, U=U_mean, stds=10.0)
 
     ( qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv,
       tot_sink, cth_bin, rfv_acc, rfv_nrm, 
@@ -209,11 +215,11 @@ function define_cf_experiments(; ctx::ModelContext, cf0=cf0, U=U_physical)
         expname = @sprintf("cf %2d %2d", i, j)
         cf = zeros(size(cth_bin)) # initialize cloud fraction profile
         zz = 500.0 .<= cth_bin .<= 3100.0 # 261
-        cf[zz] = TradeCuModel.filt_rfv( (cf_prime([i, j]) .+ cf0)[:] )
+        cf[zz] = TradeCuModel.filt_rfv( (stds*cf_prime([i, j]) .+ cf0)[:] )
         cumcf = reverse( cumsum(reverse( cf )) )
 
         control = define_experiment( control; name=expname, 
-            description="cloud fraction resampled, mode1 $(i)σ, mode2 $(j)σ",
+            description="cloud fraction resampled, cf0 + $(i)*mode1 + $(j)*mode2",
             qm=qm, qs=qs, zcb=zcb, qcb=qcb, E_cb=E_cb, x=x, divg=divg, 
             sfc_adv=sfc_adv, tot_sink=tot_sink, cth_bin=cth_bin, 
             rfv_acc=cumcf, rfv_nrm=cf,
@@ -223,8 +229,8 @@ function define_cf_experiments(; ctx::ModelContext, cf0=cf0, U=U_physical)
         a_i_control = control.output.acld # cloud area fraction for each cloud top height bin
         M_i_control = control.output.M # mass flux for each cloud top height bin
         
-        dimexp = define_experiment(control; name="subsidence-5%", 
-            description="LS subsidence-5%",
+        dimexp = define_experiment(control; name="DIM-" * expname, 
+            description="DIM subsidence-5% Ecb+2% q,qs+7% " * @sprintf("cf%+1dM1%+1dM2",i,j),
             divg=divg*0.95, sfc_adv=0.95*sfc_adv,
             E_cb=E_cb*1.02,
             qs=qs*1.07, qcb=qcb*1.07, qm=qm*1.07,
@@ -239,8 +245,10 @@ function define_cf_experiments(; ctx::ModelContext, cf0=cf0, U=U_physical)
 end
 
 # initialize cf experiments
+# run control simulations with resampled cf.
+# use the control cloud fraction and mass flux for DIM experiments.
 CfExpDict = define_cf_experiments(; ctx=ctx, cf0=cf0, U=U_physical)
-# run the experiments like control experiments
+# already done by define_cf_experiments:
 # for expmt in values(CfExpDict) # run all the defined experiments
 #     integrate_experiment!(expmt, ctx=ctx)
 # end
@@ -252,26 +260,69 @@ CfExpDict = define_cf_experiments(; ctx=ctx, cf0=cf0, U=U_physical)
 # -+  0+X ++X
 clf()
 fig = gcf()
+fig.subplots_adjust(left=0.10, right=0.82, bottom=0.12, top=0.90, wspace=0.18, hspace=0.26)
 axs = fig.subplots(3, 3)
 log_norm = matplotlib.colors.LogNorm(vmin=1e-1, vmax=1e1)
-levels = 10 .^ range(log10(1e-1), log10(1e1), length=7)
+levels = 10 .^ range(log10(1e-1), log10(1e1), length=13)
+right_mappable = nothing
 for i in -1:1, j in -1:1
     ax = axs[i+1, j+1]
     req = @sprintf("cf %2d %2d", i, j)
     data = CfExpDict[req].output.w
     cm = ax.contourf(CfExpDict[req].input.tot_sink*1e3, ctx.z/1e3,
         data, levels=levels, cmap=get_cmap("RdYlBu_r", 13), norm=log_norm, extend="both")
-    cbar = fig.colorbar(cm, ax=ax, pad=0.02, extend="both") # shrink=0.9,
-    # cbar.set_label("w")
+    if j == 1
+        right_mappable = cm
+    end
     ax.plot(2e3*CfExpDict[req].input.cth_nrm, CfExpDict[req].input.cth_bin/1e3, color="k", label="cloud fraction")
     ax.set_ylim([0, 3.5])
     ax.set_xlim([0, 5.6])
-    j == -1 && ax.set_ylabel("height (km)")
-    i ==  1 && ax.set_xlabel("sink rate (1/km)")
-    ax.text(2, 2.5, @sprintf("%+d,%+d σ", i, j), fontsize=12)
+    j == -1 && ax.set_ylabel("height (km)", fontsize=12)
+    i ==  1 && ax.set_xlabel("sink rate (1/km)", fontsize=12)
+    ax.text(2, 2.5, @sprintf("%+d,%+d σ", 10*i, 10*j), fontsize=12)
     ax.tick_params(labelsize=12)
 end
-fig.suptitle("cloud fraction ±1σ of modes 1 and 2", fontsize=14)
-fig.subplots_adjust(wspace=0.28, hspace=0.28, left=0.06, right=0.98, bottom=0.06, top=0.94)
-tight_layout()
-# plot(CfExpDict["cf  0  1"].input.qm, CfExpDict["cf  0  1"].input.cth_bin/1e3, label="cloud fraction")
+if right_mappable !== nothing
+    cax = fig.add_axes([0.84, 0.23, 0.018, 0.42])
+    fig.colorbar(right_mappable, cax=cax, extend="both")
+end
+fig.suptitle("cloud fraction mean ±10σ of modes 1 and 2", fontsize=14)
+# for f in ["svg", "png", "pdf", "eps"]
+#     savefig("resample_cf_w." * f)
+# end
+
+# plot cloud fraction ratio of DIM to control experiments
+good(x) = !ismissing(x) && isfinite(x)
+req_exp(i,j) = @sprintf("cf %2d %2d", i, j)
+dim_exp_pair(D, req) = (D[req], D["dim-" * req])
+function cf_plot_acld_ratio(c, e)
+    plot(c.input.tot_sink*1e3, e.output.acld ./ c.output.acld .-1)
+end
+
+clf()
+fig = gcf()
+for i in -1:1, j in -1:1
+    c,e = dim_exp_pair(CfExpDict, req_exp(i,j))
+    cf_plot_acld_ratio(c, e)
+end
+# if a sink rate generates a cloud top height in the 
+# observed cloud top height distribution, then its cloud fraction
+# is always reduced by the same ratio in the DIM experiment, 
+# regardless of the cloud fraction profile.
+#
+# Different cloud fraction are reduced by different fractions
+
+c,e = dim_exp_pair(CfExpDict, req_exp(0,0))
+icb = searchsortedlast(ctx.z, 700)
+ii = @. good(e.output.M[icb,:]) & good(c.output.M[icb,:])
+sum(e.output.M[icb,ii]) / sum(c.output.M[icb,ii]) # !almost! the same as acld
+sum(e.output.acld[ii]) / sum(c.output.acld[ii])
+
+for i in -1:1, j in -1:1
+    c,e = dim_exp_pair(CfExpDict, req_exp(i,j))
+    l = plot(c.output.acld, c.output.ztop/1e3)
+    plot(e.output.acld, e.output.ztop/1e3, "--", color=l[0].get_color())
+end
+xlabel("cloud fraction per sink rate bin")
+ylabel("cloud top height for sink rate (km)")
+title("cloud fraction change for each moisture sink rate")
