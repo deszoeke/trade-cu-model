@@ -326,3 +326,7 @@ end
 xlabel("cloud fraction per sink rate bin")
 ylabel("cloud top height for sink rate (km)")
 title("cloud fraction change for each moisture sink rate")
+
+# look at diurnal cycle?
+date = floor.(time, Day(1))
+hourofday = Dates.value.(time.-date) / 86_400_000 * 24
