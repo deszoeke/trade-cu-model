@@ -968,7 +968,7 @@ function integrate_experiment!(exp::Experiment; ctx::ModelContext)
         icb = findfirst(z.>=zcb) # use cloud base mass flux ratio
         a_i_control = exp.input.a_i_control
         M_i_control = exp.input.M_i_control[icb,:]
-        fac = M[icb,:] ./ M_i_control
+        fac = M[icb,:] ./ M_i_control # scale by cloud base mass flux
         a_i = fac .* a_i_control # Vector, new cloud area fraction scaled up for new experiment
     end
     # println("size(Gcld) = $(size(Gcld)), size(a_i) = $(size(a_i))")

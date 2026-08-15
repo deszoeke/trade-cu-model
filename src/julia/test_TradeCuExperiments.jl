@@ -59,6 +59,9 @@ ctx, ExpDict, controlsink, sinkm5, sinkp5 = test_control_sink();
 ( qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv,
     tot_sink, cth_bin, rfv_acc, rfv_nrm, 
     rhoL, ns, nz ) = setup_experiments(ctx=ctx);
+
+SinkExpDict = define_sink_experiments(; ctx=ctx, control=ExpDict["control"])
+
 # Get matched total sink rate and cloud top ensemble from control experiment
 # aligned with the z grid for use in experiments.
 # controlsink.output.acld; cloud fractions interpolated to ztop = z grid
@@ -98,7 +101,7 @@ end
 # recompute the cloud fraction for the DIM experiments, assuming
 # w_i is invariant from the control experiment, stretching w profile from old ztop to new ztop.
 # a_i = new_area( ExpDict["DIMsink"], ExpDict["control-sink"], ctx )
-# possibly only cloud BASE mass flux is a good indicator of cloud fraction.
+# cloud BASE mass flux is proportional tocloud fraction.
 =#
 
 # quick count of valid fields
@@ -184,6 +187,42 @@ end
 # plot( ExpDict["sink-5%"].output.ztop/1e3)
 
 Experiment = TradeCuModel.Experiment
+function cloud_ratio(c,e)
+    ii = @. good(c.output.acld) & good(e.output.acld)
+    sum(e.output.acld[ii]) / sum(c.output.acld[ii])
+end
+
+ctl = SinkExpDict["sink+0%"]
+cr = zeros(length(SinkExpDict))
+p = -0.1:0.01:0.1
+for (i, p) in enumerate(p)
+    exp_name = @sprintf("sink%+d%%", p*100)
+    e = SinkExpDict[exp_name]
+    cr[i] = cloud_ratio(ctl, e)
+end
+# compute for cloud ratio for all pairs of experiments
+crm = fill(NaN,length(p),length(p))
+pr  = fill(NaN,length(p),length(p))
+for i in eachindex(p)
+    for j in eachindex(p)
+        e_i = SinkExpDict[@sprintf("sink%+d%%", p[i]*100)]
+        e_j = SinkExpDict[@sprintf("sink%+d%%", p[j]*100)]
+        crm[i,j] = cloud_ratio(e_i, e_j)
+        pr[i,j] = (1+p[j])/(1+p[i])
+    end
+end
+clf()
+subplot(2,1,1)
+# plot(p, cr.-1, "ko-", linewidth=0.5, label="cloud fraction ratio")
+plot(pr[:].-1, crm[:].-1,'.')
+# xlabel("Δ sink rate (%)")
+ylabel("Δ cloud fraction ratio")
+subplot(2,1,2)
+plot(pr[:].-1, (crm[:])./(pr[:]),'.')
+xlabel("Δ sink rate (%)")
+ylabel("Δ cloud fraction ratio / Δ sink rate")
+
+
 function plot_exp_vs_control(c::Experiment, e1::Experiment, e2::Experiment, var::Symbol; f=identity, kwargs...)
     cvar = f(getfield(c.output, var))
     e1var = f(getfield(e1.output, var))

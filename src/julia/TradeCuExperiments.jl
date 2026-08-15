@@ -6,32 +6,6 @@
 
 includet("TradeCuModel.jl")
 
-#=
-using PythonPlot
-using Printf
-using Statistics
-
-if @isdefined(PythonPlot)
-    using PythonCall
-    "Convert arrays with missing to numpy masked arrays without overriding global conversion."
-    function as_masked_array(a::AbstractArray{Union{T,Missing},N}) where {T<:Real,N}
-        np = PythonCall.pyimport("numpy")
-        np.ma.array(coalesce.(a, NaN), mask=ismissing.(a))
-    end
-
-    "close plots with close(\"all\")"
-    close(x) = PythonCall.pyimport("matplotlib.pyplot").close(x)
-elseif @isdefined(PyPlot)
-    using PyCall
-    using PyCall: PyObject
-    # allow for plotting with missing values
-    function PyCall.PyObject(a::Array{Union{T,Missing},N}) where {T,N}
-        numpy_ma = PyCall.pyimport("numpy").ma
-        pycall(numpy_ma.array, Any, coalesce.(a,zero(T)), mask=ismissing.(a))
-    end
-end
-=#
-
 "Trade Cumulus Model Experiments Module"
 module TradeCuExperiments
 
@@ -44,6 +18,7 @@ using VaporSat # dev ../../deps/VaporSat
 
 export ExpDict # dictionary contains defined experiments
 export init_context, define_experiments, define_experiment
+export define_sink_experiments
 export interp_sinkrate #, get_sinkrate
 export interp_cloudtop_height
 export integrate_experiment!
@@ -287,14 +262,14 @@ function define_experiments(; ctx::ModelContext)
     sinkp5 = define_experiment( control; name="sink+5%", 
         description="sink rate +5%",
         tot_sink=1.05*tot_sink, # cloud top height depends only on cloud model
-        # control=false, a_i_control=a_i_control, M_i_control=M_i_control ) # set a,M same as control
-        control=true ) # redistributes a_i and M_i to match G(z)
+        control=false, a_i_control=a_i_control, M_i_control=M_i_control ) # set initial a,M to control
+        # control=true ) # redistributes a_i and M_i to match G(z)
 
     sinkm5 = define_experiment( control; name="sink-5%", 
         description="sink rate -5%",
         tot_sink=0.95*tot_sink,
-        # control=false, a_i_control=a_i_control, M_i_control=M_i_control ) # set a,M same as control
-        control=true ) # redistributes a_i and M_i to match G(z)
+        control=false, a_i_control=a_i_control, M_i_control=M_i_control ) # set initial a,M to control
+        # control=true ) # redistributes a_i and M_i to match G(z)
 
     # # "DIM" is exactly as "sfc(1-RH)-5%" above
     # DIM = define_experiment( cRHminus5pct; name="DIM", 
@@ -447,8 +422,7 @@ end
 
 # EXPERIMENT TESTS
 """
-inject this exeriment function within TradeCuExperiments module
-to test the sink rate setting experiment.
+test the sink rate setting experiment.
 """
 function test_control_sink()
     # run all the experiments and fill the output structures
@@ -524,6 +498,41 @@ function test_control_sink()
     # partition the large-scale moisture flux to the cloud flux.
     # Then finally calculate the cloud fluxes, mass fluxes, and velocities.
     return ctx, ExpDict, controlsink, sinkm5, sinkp5, keyorder
+end
+
+"initialize experiments with input parameters and empty output structures"
+function define_sink_experiments(; ctx, control)
+
+    ( qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv,
+      tot_sink, cth_bin, rfv_acc, rfv_nrm, 
+      rho, rhoL, ns, nz ) = setup_experiments(ctx=ctx)
+      
+    icb = findfirst(ctx.z .>= zcb) # cloud base index
+
+    # filter rfv_acc and rfv_nrm
+    n = 3 # number of times to apply moving average filter  
+    m = 5 # moving average window size
+    mp =  m÷2 * n
+    idx = clamp.(1-mp:lastindex(rfv_nrm)+mp, 1,lastindex(rfv_nrm)) # pad ends
+    flt(x) = recurse(x->moving_average(x, m, good), x, n) # nx moving average filter
+
+    # control a_i and M_i will scale a for experiments
+    a_i_control = control.output.acld # cloud area fraction for each cloud top height bin
+    M_i_control = control.output.M # mass flux for each cloud top height bin
+    
+    # sink rate experiments
+    SinkExpDict = Dict{String, Experiment}()
+    for p in -0.1:0.01:0.1
+        str = @sprintf("%+d", p*100)
+        expmt = define_experiment( control; name="sink$(str)%",
+            description="sink rate $(str)%",
+            tot_sink=(1+p)*tot_sink, # cloud top height depends only on cloud model
+            control=false, a_i_control=a_i_control, M_i_control=M_i_control ) # set initial a,M to control
+        integrate_experiment!(expmt, ctx=ctx)
+        push!(SinkExpDict, expmt.name => expmt)
+    end
+
+    return SinkExpDict
 end
 
 end # module TradeCuExperiments
