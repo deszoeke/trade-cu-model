@@ -18,7 +18,7 @@ using VaporSat # dev ../../deps/VaporSat
 
 export ExpDict # dictionary contains defined experiments
 export init_context, define_experiments, define_experiment
-export define_sink_experiments
+export define_sink_experiments, define_pcp_experiments
 export interp_sinkrate #, get_sinkrate
 export interp_cloudtop_height
 export integrate_experiment!
@@ -527,6 +527,40 @@ function define_sink_experiments(; ctx, control)
         expmt = define_experiment( control; name="sink$(str)%",
             description="sink rate $(str)%",
             tot_sink=(1+p)*tot_sink, # cloud top height depends only on cloud model
+            control=false, a_i_control=a_i_control, M_i_control=M_i_control ) # set initial a,M to control
+        integrate_experiment!(expmt, ctx=ctx)
+        push!(SinkExpDict, expmt.name => expmt)
+    end
+
+    return SinkExpDict
+end
+
+function define_pcp_experiments(; ctx, control)
+
+    ( qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv,
+      tot_sink, cth_bin, rfv_acc, rfv_nrm, 
+      rho, rhoL, ns, nz ) = setup_experiments(ctx=ctx)
+      
+    icb = findfirst(ctx.z .>= zcb) # cloud base index
+
+    # filter rfv_acc and rfv_nrm
+    n = 3 # number of times to apply moving average filter  
+    m = 5 # moving average window size
+    mp =  m÷2 * n
+    idx = clamp.(1-mp:lastindex(rfv_nrm)+mp, 1,lastindex(rfv_nrm)) # pad ends
+    flt(x) = recurse(x->moving_average(x, m, good), x, n) # nx moving average filter
+
+    # control a_i and M_i will scale a for experiments
+    a_i_control = control.output.acld # cloud area fraction for each cloud top height bin
+    M_i_control = control.output.M # mass flux for each cloud top height bin
+    
+    # sink rate experiments
+    SinkExpDict = Dict{String, Experiment}()
+    for x in 0:0.1:0.7
+        str = @sprintf("x=%4.2f", x)
+        expmt = define_experiment( control; name="sink$(str)%",
+            description="sink rate $(x)%",
+            x=x,
             control=false, a_i_control=a_i_control, M_i_control=M_i_control ) # set initial a,M to control
         integrate_experiment!(expmt, ctx=ctx)
         push!(SinkExpDict, expmt.name => expmt)

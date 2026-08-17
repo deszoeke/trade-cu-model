@@ -222,6 +222,10 @@ plot(pr[:].-1, (crm[:])./(pr[:]),'.')
 xlabel("Δ sink rate (%)")
 ylabel("Δ cloud fraction ratio / Δ sink rate")
 
+# Can't independently change the moisture flux G and the cloud
+# fraction at each cloud top height (moisture sink rate). 
+# The cloud fraction is determined by the moisture flux G(h) as a function of cloud top height distribution.
+# Could change the precipitation efficiency, though.
 
 function plot_exp_vs_control(c::Experiment, e1::Experiment, e2::Experiment, var::Symbol; f=identity, kwargs...)
     cvar = f(getfield(c.output, var))
