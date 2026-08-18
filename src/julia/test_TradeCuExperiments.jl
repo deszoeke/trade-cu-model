@@ -28,6 +28,7 @@ end
 
 includet("TradeCuExperiments.jl")
 using .TradeCuExperiments
+Experiment = TradeCuModel.Experiment
 
 pd = permutedims
 
@@ -46,7 +47,7 @@ font_settings = Dict(
 )
 matplotlib.rcParams.update(font_settings)
 
-# a dictionary of experiments
+# a dictionary of experiments containing control and std experiments
 # and a controlsink experiment with sink rate fixed to the control
 ctx, ExpDict, controlsink, sinkm5, sinkp5 = test_control_sink();
 
@@ -63,6 +64,61 @@ ctx, ExpDict, controlsink, sinkm5, sinkp5 = test_control_sink();
 control = ExpDict["control"]
 SinkExpDict = define_sink_experiments(; ctx=ctx, control=control)
 PcpExpDict, xx  = define_pcp_experiments( ; ctx=ctx, control=control, xx=0.58*(0.991:0.003:1.052))
+
+good(x) = !ismissing(x) && isfinite(x)
+f0(x) = good(x) ? x : 0
+
+"common moisture flux sum plot"
+moisture_flux_sum(E::Experiment) = moisture_flux_sum([E::Experiment])
+function moisture_flux_sum(VE::Vector{Experiment})
+    nx = length(VE)
+    
+    icb = searchsortedlast(ctx.z, ctx.zcb)
+
+    subplot(2,2,2)
+    for i in eachindex(VE)
+        e = VE[i]
+        str   = e.name
+        acld  = e.output.acld
+        F_pcp = e.output.F_pcp[icb,:]
+        plot( e.input.tot_sink*1e3, 
+            -ctx.rho*3600 * cumsum(f0.(acld .* F_pcp)), # kg/kg m/s --> mm/h
+            label=str )
+    end
+    legend(frameon=false)
+    xlabel("moisture sink rate (km\$^{-1}\$)")
+    ylabel("precipitation\n(mm/h)")
+    ylim([0, 0.03])
+
+    subplot(2,2,4)
+    for i in eachindex(VE)
+        e = VE[i]
+        str   = e.name
+        acld  = e.output.acld
+        F_cld = e.output.F_cld[icb,:]
+        plot( tot_sink*1e3, 1e3 * cumsum(f0.(acld .* F_cld)),
+            label=str )
+    end
+    xlabel("moisture sink rate (km\$^{-1}\$)")
+    ylabel("updraft flux\n(g/kg m/s)")
+    gcf()
+end
+
+# table values
+sum(ExpDict["subsidence-5%"].output.M[icb,:]) / 
+sum(ExpDict["control"].output.M[icb,:]) - 1
+sum(ExpDict["q&qs+7%"].output.M[icb,:]) / 
+sum(ExpDict["control"].output.M[icb,:]) - 1
+sum(ExpDict["subsidence-5%"].output.acld .* ExpDict["subsidence-5%"].output.F_cld[icb,:]) / 
+sum(ExpDict["control"].output.acld .* ExpDict["control"].output.F_cld[icb,:]) - 1
+sum(ExpDict["q&qs+7%"].output.acld .* ExpDict["q&qs+7%"].output.F_cld[icb,:]) / 
+sum(ExpDict["control"].output.acld .* ExpDict["control"].output.F_cld[icb,:]) - 1
+sum(ExpDict["subsidence-5%"].output.acld .* ExpDict["subsidence-5%"].output.F_pcp[icb,:]) / 
+sum(ExpDict["control"].output.acld .* ExpDict["control"].output.F_pcp[icb,:]) - 1
+sum(ExpDict["q&qs+7%"].output.acld .* ExpDict["q&qs+7%"].output.F_pcp[icb,:]) / 
+sum(ExpDict["control"].output.acld .* ExpDict["control"].output.F_pcp[icb,:]) - 1
+
+
 function getx(i; xx=xx)
     PcpExpDict[@sprintf("x=%5.3f", xx[i])]
 end
@@ -321,7 +377,6 @@ end
 # plot( ExpDict["sink+5%"].output.ztop/1e3)
 # plot( ExpDict["sink-5%"].output.ztop/1e3)
 
-Experiment = TradeCuModel.Experiment
 function cloud_ratio(c,e)
     ii = @. good(c.output.acld) & good(e.output.acld)
     sum(e.output.acld[ii]) / sum(c.output.acld[ii])
