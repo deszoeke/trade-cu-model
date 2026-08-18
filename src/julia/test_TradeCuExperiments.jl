@@ -1,7 +1,7 @@
 # using REPL
 # REPL.activate(TradeCuExperiments) # steps in to module scope
 using Revise
-using Debugger
+# using Debugger
 
 using PythonPlot, PythonCall
 using Printf
@@ -60,7 +60,142 @@ ctx, ExpDict, controlsink, sinkm5, sinkp5 = test_control_sink();
     tot_sink, cth_bin, rfv_acc, rfv_nrm, 
     rhoL, ns, nz ) = setup_experiments(ctx=ctx);
 
-SinkExpDict = define_sink_experiments(; ctx=ctx, control=ExpDict["control"])
+control = ExpDict["control"]
+SinkExpDict = define_sink_experiments(; ctx=ctx, control=control)
+PcpExpDict, xx  = define_pcp_experiments( ; ctx=ctx, control=control, xx=0.58*(0.991:0.003:1.052))
+function getx(i; xx=xx)
+    PcpExpDict[@sprintf("x=%5.3f", xx[i])]
+end
+getxin(v::Symbol ,i) = getfield( getx(i).input , v )
+getxout(v::Symbol,i) = getfield( getx(i).output, v )
+
+good(x) = !ismissing(x) && isfinite(x)
+f0(x)::Float64 = good(x) ? x : 0.0
+
+a_pcpexp = let xx=xx, PcpExpDict=PcpExpDict, control=control
+    tot_sink = control.input.tot_sink
+    ns = length(tot_sink)
+    nx = length(xx)
+    # unload cloud fractions to a matrix
+    a_pcpexp = fill(NaN, ns, nx)
+    for (i,x) in enumerate(xx)
+        str = @sprintf("x=%4.2f", x)
+        a_pcpexp[:,i] = coalesce.(getxout(:acld,i), NaN)
+    end
+    a_pcpexp
+end
+# precipitation dries like large-scale advection, opposing
+# cloud updraft moisture flux, so higher precipitation efficiency
+# (more precipitation) requires more clouds.
+# WHY is precipitation and cloud moisture flux 
+
+icb = searchsortedlast(ctx.z, zcb) # cloud base
+tot_pcp = [sum(f0, a_pcpexp[:,i] .* getxout(:F_pcp, i)[icb,:]) for i in eachindex(xx)]
+round.(tot_pcp ./ tot_pcp[2]  .- 1, sigdigits=2)
+pcp_W_m2 = ctx.rhoL * tot_pcp
+slope(y,x) = cov(y, x) / var(x)
+slope(pcp_W_m2, xx) # -75 W/m^2 / x
+slope(pcp_W_m2, xx) / (mean(pcp_W_m2)/mean(xx)) # 2.036
+slope( sum(f0, a_pcpexp, dims=1)[:], xx) / mean(sum(f0, a_pcpexp, dims=1)/mean(xx)) # 0.857
+slope( sum(f0, a_pcpexp, dims=1)[:], pcp_W_m2) / mean(sum(f0, a_pcpexp, dims=1)/mean(pcp_W_m2)) # 0.419
+
+clf()
+subplot(2,2,1)
+plot( -pcp_W_m2, 100*sum(f0, a_pcpexp, dims=1)[:], ".")
+ylabel("cloud fraction (%)"); xlabel("precipitation (W m\$^2\$)")
+text(20.1, 6.32, "(ΔC/C)/(ΔP/P) = 0.42")
+
+# cumsum all-sky moisture fluxes
+# clf()
+subplot(2,2,2)
+for (i,x) in enumerate(xx)
+    if (i-1)%10 == 0
+        str = @sprintf("x=%4.2f", x)
+        plot( tot_sink*1e3, 
+            -ctx.rho*3600 * cumsum(f0.(a_pcpexp[:,i] .* getxout(:F_pcp, i)[icb,:])), # kg/kg m/s --> mm/h
+            label=str )
+    end
+end
+legend(frameon=false)
+xlabel("moisture sink rate (km\$^{-1}\$)")
+ylabel("precipitation\n(mm/h)")
+ylim([0, 0.03])
+
+subplot(2,2,4)
+for (i,x) in enumerate(xx)
+    if (i-1)%10 == 0
+        str = @sprintf("x=%4.2f", x)
+        plot( tot_sink*1e3, 
+            1e3 * cumsum(f0.(a_pcpexp[:,i] .* getxout(:F_cld, i)[icb,:])),
+            label=str )
+    end
+end
+# legend(frameon=false)
+xlabel("moisture sink rate (km\$^{-1}\$)")
+ylabel("updraft moisture flux\n(g/kg m/s)")
+ylim([0, 0.07])
+suptitle("precipitation efficiency experiments")
+tight_layout()
+
+for f in split("png pdf svg eps")
+    savefig("pcp_sensitivity.$f")
+end
+
+# cumsum all-sky moisture flux ratios
+clf()
+subplot(2,2,3)
+for (i,x) in enumerate(xx)
+    if 0.51 <= x <= 0.56
+        str = @sprintf("x=%4.2f", x)
+        semilogy( tot_sink*1e3, 
+            cumsum(f0.(a_pcpexp[:,i] .* getxout(:F_pcp, i)[icb,:])) ./
+            cumsum(f0.(a_pcpexp[:,2] .* getxout(:F_pcp, 2)[icb,:])), # kg/kg m/s --> mm/h
+            label=str )
+    end
+end
+legend(frameon=false)
+xlabel("moisture sink rate (km\$^{-1}\$)")
+ylabel("precipitation (mm/h)")
+ylim([5e-1, 5])
+
+subplot(2,2,4)
+for (i,x) in enumerate(xx)
+    if 0.51 <= x <= 0.56
+        str = @sprintf("x=%4.2f", x)
+        semilogy( tot_sink*1e3, 
+            ( cumsum(f0.(a_pcpexp[:,i] .* getxout(:F_cld, i)[icb,:])) ./
+              cumsum(f0.(a_pcpexp[:,2] .* getxout(:F_cld, 2)[icb,:]))   ),
+            label=str )
+    end
+end
+# legend(frameon=false)
+xlabel("moisture sink rate (km\$^{-1}\$)")
+ylabel("updraft moisture flux (g/kg m/s)")
+ylim([8e-1, 1.2])
+tight_layout()
+
+clf()
+let i = 2 # control x=0.53
+    # plot( 1e3 * (f0.(a_pcpexp[:,i] .* getxout(:F_cld, i)[icb,:])),
+    #     -ctx.rho*3600 * (f0.(a_pcpexp[:,i] .* getxout(:F_pcp, i)[icb,:])),
+    #     ".-", markersize=1) # all-sky
+    plot( 1e3 * (f0.(getxout(:F_cld, i)[icb,:])),
+        -ctx.rho*3600 * (f0.(getxout(:F_pcp, i)[icb,:])),
+        ".-", markersize=1, linestyle="none") # in-cloud
+end
+xlim([0.5, 2.5])
+ylim([0, 2])
+# not in the same UNITS!
+# plot([0,2.5], [0,2.5], "k", linewidth=0.5)
+# plot([0,2.5], [0,1.25], "k", linewidth=0.5)
+ylabel("precipitation (mm/h)")
+xlabel("updraft (g/kg m/s)")
+title("in-cloud moisture fluxes")
+gca().set_aspect("equal")
+
+
+# clf()
+# plot(tot_sink, cumsum(f0.(a_pcpexp), dims=1))
 
 # Get matched total sink rate and cloud top ensemble from control experiment
 # aligned with the z grid for use in experiments.

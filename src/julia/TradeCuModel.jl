@@ -33,7 +33,8 @@ export calc_G_allsky, calc_rho, calc_rhoL, Lv, LvK
 export cloudflux_allsky
 export integrate_experiment!
 export updraft_w_dq
-export dadsinkrate, find_contour!, interpolate_ascending, interpolate_descending
+# export dadsinkrate  # deprecated
+export find_contour!, interpolate_ascending, interpolate_descending
 export interp_sinkrate, interp_cloudtop_height
 export tmean, tstd
 export get_sounding_dataset, get_mean_soundings, get_goes_cloud_data

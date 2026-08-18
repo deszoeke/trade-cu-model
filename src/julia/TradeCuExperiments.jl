@@ -292,7 +292,8 @@ end
 
 # use define_experiment to define a new experiment exactly like the control, but with a new sink rate array sinkz
 
-# cloud_i_area not used
+#= cloud_i_area not used
+# ctx.rfv_acc is unfiltered!
 "gets GOES area for nearest cloud top height"
 function cloud_i_area( ctx::ModelContext; cth_bin=ctx.cth_bin, rfv_acc=ctx.rfv_acc )
     z=ctx.z
@@ -304,7 +305,6 @@ function cloud_i_area( ctx::ModelContext; cth_bin=ctx.cth_bin, rfv_acc=ctx.rfv_a
     a_i[offset+1 .+ eachindex(rfv_acc[1:end-1])] .= -diff(rfv_acc)
     return a_i
 end
-
 "gets GOES area for nearest cloud top height"
 function cloud_i_area( exp::Experiment; ctx::ModelContext, 
     cth_bin=exp.input.cth_bin, # experiment cloud top height supersedes context
@@ -319,6 +319,7 @@ function cloud_i_area( exp::Experiment; ctx::ModelContext,
     a_i[offset+1 .+ eachindex(cth_acc[1:end-1])] .= -diff(cth_acc)
     return a_i
 end
+=#
 
 # Use calc_Ftot(...) directly for flux diagnostics.
 
@@ -449,7 +450,6 @@ function test_control_sink()
     ii_cld = findall(700 .≤ ctx.z .≤ 4000)  # 331 elements matching GOES CTH range
     sinkz = sinkz_full[ii_cld]              # sink rates for cloud tops at 700–4000 m
 
-    # a_i = cloud_i_area( ctx )
     # copy the control experiment and modify the sink rate array to create new experiments
     control = ExpDict["control"]
     controlsink = define_experiment(control; tot_sink=sinkz,
@@ -535,38 +535,31 @@ function define_sink_experiments(; ctx, control)
     return SinkExpDict
 end
 
-function define_pcp_experiments(; ctx, control)
-
-    ( qm, qs, zcb, qcb, E_cb, x, divg, sfc_adv,
-      tot_sink, cth_bin, rfv_acc, rfv_nrm, 
-      rho, rhoL, ns, nz ) = setup_experiments(ctx=ctx)
-      
-    icb = findfirst(ctx.z .>= zcb) # cloud base index
-
-    # filter rfv_acc and rfv_nrm
-    n = 3 # number of times to apply moving average filter  
-    m = 5 # moving average window size
-    mp =  m÷2 * n
-    idx = clamp.(1-mp:lastindex(rfv_nrm)+mp, 1,lastindex(rfv_nrm)) # pad ends
-    flt(x) = recurse(x->moving_average(x, m, good), x, n) # nx moving average filter
-
-    # control a_i and M_i will scale a for experiments
+"""
+returns a Dict of integrated sink rate experiments
+  x=0 has no precipitation
+  x=1 has no entrainment
+"""
+function define_pcp_experiments(; ctx, control, xx)
+    # control a_i and M_i scale experiments' a
     a_i_control = control.output.acld # cloud area fraction for each cloud top height bin
     M_i_control = control.output.M # mass flux for each cloud top height bin
     
-    # sink rate experiments
-    SinkExpDict = Dict{String, Experiment}()
-    for x in 0:0.1:0.7
-        str = @sprintf("x=%4.2f", x)
-        expmt = define_experiment( control; name="sink$(str)%",
-            description="sink rate $(x)%",
+    # define, integrate sink rate experiments and put in dict
+    PcpExpDict = Dict{String, Experiment}()
+    # xx = 0.58*(0.991:0.003:1.030) # sort(vcat(0:0.1:0.9, 0.53*(0.98:0.02:1.04)))
+    # xx = 0.58*(0.9:0.01:1.1) # sort(vcat(0:0.1:0.9, 0.53*(0.98:0.02:1.04)))
+    for x in xx
+        str = @sprintf("x=%5.3f", x)
+        expmt = define_experiment( control; name=str,
+            description=@sprintf("precip efficiency x=%4.2f", x),
             x=x,
             control=false, a_i_control=a_i_control, M_i_control=M_i_control ) # set initial a,M to control
         integrate_experiment!(expmt, ctx=ctx)
-        push!(SinkExpDict, expmt.name => expmt)
+        push!(PcpExpDict, expmt.name => expmt)
     end
 
-    return SinkExpDict
+    return PcpExpDict, xx
 end
 
 end # module TradeCuExperiments
