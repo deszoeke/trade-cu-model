@@ -510,7 +510,7 @@ function calc_G_allsky(ztop; z,
     E_cb=182,       # W/m^2; just the cloud vapor flux
     rhb_prate=22,   # W/m^2 > 0
     divg,
-    sfc_adv=2e-8,   # kg/kg /s
+    sfc_adv,   # kg/kg /s
     qm, rho, rhoL,
     zi=4000.0, zcb=700.0 )
 

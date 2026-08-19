@@ -72,10 +72,11 @@ function setup_experiments(; ctx::ModelContext)
     zi   = ctx.zi    # m  # inversion for tapering subsidence
     ztop = ctx.ztop  # m  # top of cloud model integration domain
     zcb  = ctx.zcb   # m
-    divg = 1.5e-6    # 1/s
-    sfc_adv = 2.0e-8   # kg/kg /s; large-scale advective drying
-    # sfc_adv = 1.7e-8 # kg/kg /s; large-scale advective drying
-    x = 0.53 # parameter precipitation efficiency
+    divg = 1.4e-6    # 1/s
+    # sfc_adv = 2.0e-8   # kg/kg /s; large-scale advective drying
+    sfc_adv = 1.7e-8 # kg/kg /s; large-scale advective drying
+    # x = 0.53
+    x = 0.63 # parameter precipitation efficiency --> 22 W/m^2 precip.
 
     # ensemble of sink rates
     # reverse so that tot_sink decreases and ztop increases
@@ -547,8 +548,6 @@ function define_pcp_experiments(; ctx, control, xx)
     
     # define, integrate sink rate experiments and put in dict
     PcpExpDict = Dict{String, Experiment}()
-    # xx = 0.58*(0.991:0.003:1.030) # sort(vcat(0:0.1:0.9, 0.53*(0.98:0.02:1.04)))
-    # xx = 0.58*(0.9:0.01:1.1) # sort(vcat(0:0.1:0.9, 0.53*(0.98:0.02:1.04)))
     for x in xx
         str = @sprintf("x=%5.3f", x)
         expmt = define_experiment( control; name=str,

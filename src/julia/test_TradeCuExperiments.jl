@@ -63,7 +63,7 @@ ctx, ExpDict, controlsink, sinkm5, sinkp5 = test_control_sink();
 
 control = ExpDict["control"]
 SinkExpDict = define_sink_experiments(; ctx=ctx, control=control)
-PcpExpDict, xx  = define_pcp_experiments( ; ctx=ctx, control=control, xx=0.58*(0.991:0.003:1.052))
+PcpExpDict, xx  = define_pcp_experiments( ; ctx=ctx, control=control, xx=0.60:0.005:0.65)
 
 good(x) = !ismissing(x) && isfinite(x)
 f0(x) = good(x) ? x : 0
@@ -147,8 +147,13 @@ end
 
 icb = searchsortedlast(ctx.z, zcb) # cloud base
 tot_pcp = [sum(f0, a_pcpexp[:,i] .* getxout(:F_pcp, i)[icb,:]) for i in eachindex(xx)]
+tot_cld = [sum(f0, a_pcpexp[:,i] .* getxout(:F_cld, i)[icb,:]) for i in eachindex(xx)]
 round.(tot_pcp ./ tot_pcp[2]  .- 1, sigdigits=2)
 pcp_W_m2 = ctx.rhoL * tot_pcp
+# plot total precipitaiton vs. precipitation efficiency
+
+tot_pcp ./ tot_cld
+
 slope(y,x) = cov(y, x) / var(x)
 slope(pcp_W_m2, xx) # -75 W/m^2 / x
 slope(pcp_W_m2, xx) / (mean(pcp_W_m2)/mean(xx)) # 2.036
@@ -159,7 +164,9 @@ clf()
 subplot(2,2,1)
 plot( -pcp_W_m2, 100*sum(f0, a_pcpexp, dims=1)[:], ".")
 ylabel("cloud fraction (%)"); xlabel("precipitation (W m\$^2\$)")
-text(20.1, 6.32, "(ΔC/C)/(ΔP/P) = 0.42")
+text(20.1, 6.32, "(ΔC/C)/(ΔP/P) = $(round( 
+    slope( sum(f0, a_pcpexp, dims=1)[:], pcp_W_m2) / mean(sum(f0, a_pcpexp, dims=1)/mean(pcp_W_m2)), 
+    digits=2 ))")
 
 # cumsum all-sky moisture fluxes
 # clf()
@@ -175,7 +182,7 @@ end
 legend(frameon=false)
 xlabel("moisture sink rate (km\$^{-1}\$)")
 ylabel("precipitation\n(mm/h)")
-ylim([0, 0.03])
+ylim([0, 0.04])
 
 subplot(2,2,4)
 for (i,x) in enumerate(xx)
@@ -191,6 +198,12 @@ xlabel("moisture sink rate (km\$^{-1}\$)")
 ylabel("updraft moisture flux\n(g/kg m/s)")
 ylim([0, 0.07])
 suptitle("precipitation efficiency experiments")
+
+subplot(2,2,3)
+plot(xx, -pcp_W_m2)
+xlabel("precipitation efficiency")
+ylabel("precipitation (W m\$^{-2}\$)")
+slope(pcp_W_m2, xx)
 tight_layout()
 
 for f in split("png pdf svg eps")
