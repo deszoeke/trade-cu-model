@@ -1,3 +1,5 @@
+# deprecated: log transform for normalizing relative cloud changes
+
 using Revise
 # cd("/Users/deszoeks/projects/ATOMIC/trade-cu-model/src/julia")
 # using Pkg; Pkg.activate(".")
