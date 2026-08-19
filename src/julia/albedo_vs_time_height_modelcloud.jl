@@ -453,9 +453,10 @@ qs = tmean(qsat.( p, ta.-273.15 ))
 # compute, plot q, ql for soundings and control case
 # parameters
 ae = 1.5e-3
-x = 0.43
+x = 0.63
 entr_coeff = (1-x) * ae
 pcp_coeff = x * ae
+z = sondz
 icb = searchsortedlast(sondz, 700.0)
 qcb = qs[icb] # 0.01568
 dz = 10.0 # m
@@ -504,7 +505,9 @@ subplot(1,3,3)
 plot(1e3*qm, z/1e3, label=L"q", color="k")
 plot(1e3*qs, z/1e3, label=L"q_s", color="k")
 #for ae = 5e-3 .* (0.5:-0.1:0.1)
-aeplot = vcat(5.4e-4, 1e-3 : 5e-4 : 2.5e-3)
+# aeplot = vcat(5.4e-4, 1e-3 : 5e-4 : 2.5e-3)
+# aeplot = vcat(range(7e-4, stop=5e-3, length=5))
+aeplot = 7e-4 * exp.(range(0, stop=log(5e-3/7e-4), length=7))
 for ae = aeplot
     qt_=TradeCuModel.q_total(dz*ae, x, qs, qm; i0=icb, qt0=qcb)
     plot(1e3*qt_, z/1e3, label="α+ϵ=$(1e3*ae) km\$^{-1}\$", color="tab:blue",linewidth=1.2)
@@ -524,12 +527,12 @@ text(15.4, 0.8, "total \$q_c\$")
 text( 5, 0.3, "environment \$q\$")
 text(18.4, 0.3, "\$q_s\$")
 # annotate cloud sink rates
-text(10, 1.5, L"ϵ+α="*"$(aeplot[1]*1e3) km"*L"^{-1}", color="tab:blue", rotation=-58)
-text(1.5, 1.75, L"ϵ+α="*"$(aeplot[end]*1e3) km"*L"^{-1}", color="tab:blue", rotation=-42)
+text(10, 1.5, L"ϵ+α="*"$(round(aeplot[1]*1e3, digits=1)) km"*L"^{-1}", color="tab:blue", rotation=-58)
+text(3, 2, "$(round(aeplot[end]*1e3, digits=1)) km"*L"^{-1}", color="tab:blue", rotation=-42)
 
 for (i, t) = enumerate("abc")
     subplot(1,3,i)
-    text(0, 4.3, t, fontsize=fsz+2)
+    text(0, 4.5, t, fontsize=fsz+2)
 end
 suptitle("2020 Jan-Feb 12.5°N-16°N, 60°W-49°W")
 tight_layout()
