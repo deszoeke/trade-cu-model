@@ -642,24 +642,24 @@ Compute cloud fraction density per unit sink rate
 da/dsinkrate = da/dh * dh/dsinkrate.
 Interpolates satellite coordinate to model sinkrate coordiante.
 """
-function dadsinkrate(ztop, tot_sink, cth_bin, rfv_nrm, dh=10.0)
-    # condition vertical coordinate
-    ui = sortunique(ztop)
-    h = ztop[ui] # sorted ascending
-    hm_ = (h[1:end-1] .+ h[2:end]) / 2
-    ii = hm_ .<= 4000 # hardwired !!
-    hm = hm_[ii]
+# function dadsinkrate(ztop, tot_sink, cth_bin, rfv_nrm, dh=10.0)
+#     # condition vertical coordinate
+#     ui = sortunique(ztop)
+#     h = ztop[ui] # sorted ascending
+#     hm_ = (h[1:end-1] .+ h[2:end]) / 2
+#     ii = hm_ .<= 4000 # hardwired !!
+#     hm = hm_[ii]
 
-    dh_dsink = diff(h) ./ diff(tot_sink[ui])
+#     dh_dsink = diff(h) ./ diff(tot_sink[ui])
 
-    # satellite coordinate --> da/dh
-    da_dh = rfv_nrm[:] / dh
-    # interpolate satellite a(h) to unique h_sink coordinate
-    da_dh_to_sink = linear_interpolation((cth_bin,), da_dh).(hm) 
-    da_dsink = da_dh_to_sink .* -dh_dsink[ii] # truncates just to useful sink_rate bins
-    # println("sum(ii) = $(sum(ii))")
-    da_dsink, findall(ii) # return the indices too
-end
+#     # satellite coordinate --> da/dh
+#     da_dh = rfv_nrm[:] / dh
+#     # interpolate satellite a(h) to unique h_sink coordinate
+#     da_dh_to_sink = linear_interpolation((cth_bin,), da_dh).(hm) 
+#     da_dsink = da_dh_to_sink .* -dh_dsink[ii] # truncates just to useful sink_rate bins
+#     # println("sum(ii) = $(sum(ii))")
+#     da_dsink, findall(ii) # return the indices too
+# end
 # usage later:
 # da_dsink = dadsinkrate(ztop, tot_sink, cth_bin, rfv_nrm)
 

@@ -164,7 +164,7 @@ clf()
 subplot(2,2,1)
 plot( -pcp_W_m2, 100*sum(f0, a_pcpexp, dims=1)[:], ".")
 ylabel("cloud fraction (%)"); xlabel("precipitation (W m\$^2\$)")
-text(20.1, 6.32, "(ΔC/C)/(ΔP/P) = $(round( 
+text(18, 5.6, "(ΔC/C)/(ΔP/P) = $(round( 
     slope( sum(f0, a_pcpexp, dims=1)[:], pcp_W_m2) / mean(sum(f0, a_pcpexp, dims=1)/mean(pcp_W_m2)), 
     digits=2 ))")
 
@@ -205,12 +205,11 @@ xlabel("precipitation efficiency")
 ylabel("precipitation (W m\$^{-2}\$)")
 slope(pcp_W_m2, xx)
 tight_layout()
+# for f in split("png pdf svg eps")
+#     savefig("pcp_sensitivity.$f")
+# end
 
-for f in split("png pdf svg eps")
-    savefig("pcp_sensitivity.$f")
-end
-
-# cumsum all-sky moisture flux ratios
+# cumsum all-sky moisture flux ratios - doesn't work
 clf()
 subplot(2,2,3)
 for (i,x) in enumerate(xx)
@@ -244,7 +243,7 @@ ylim([8e-1, 1.2])
 tight_layout()
 
 clf()
-let i = 2 # control x=0.53
+let i = searchsortedlast(xx, 0.63)
     # plot( 1e3 * (f0.(a_pcpexp[:,i] .* getxout(:F_cld, i)[icb,:])),
     #     -ctx.rho*3600 * (f0.(a_pcpexp[:,i] .* getxout(:F_pcp, i)[icb,:])),
     #     ".-", markersize=1) # all-sky
@@ -348,32 +347,52 @@ function dlna_limit_ztop(e,c) # do not go above the highest experiment or contro
 end
 
 """
-dlna_itp_ztop(e,c)   interpolate at max control.output.ztop
+dcld_itp_ztop(e,c)   interpolate at max control.output.ztop
 compares the same valid cloud levels as the highes valid cloud top
 in the control AND the experiment.
 """
-function dlna_itp_ztop(e,c)
+function dcld_itp_ztop(e,c)
     ik = findall(x-> !ismissing(x) && isfinite(x), c.output.ztop)
     ij = findall(x-> !ismissing(x) && isfinite(x), e.output.ztop)
     mz = min(maximum(c.output.ztop[ik]), maximum(e.output.ztop[ij]))
+
     ca = TradeCuModel.interpolate_ascending(
         coalesce.(c.output.ztop[ik],NaN), 
         cumsum(coalesce.(c.output.acld[ik],NaN)) )(mz)
+    cFc = TradeCuModel.interpolate_ascending(
+        coalesce.(c.output.ztop[ik],NaN), 
+        cumsum(coalesce.(c.output.acld[ik].*c.output.F_cld[icb,ik],NaN)) )(mz)
+    cFp = TradeCuModel.interpolate_ascending(
+        coalesce.(c.output.ztop[ik],NaN), 
+        cumsum(coalesce.(c.output.acld[ik].*c.output.F_pcp[icb,ik],NaN)) )(mz)
+
     ea = TradeCuModel.interpolate_ascending(
         coalesce.(e.output.ztop[ij],NaN), 
         cumsum(coalesce.(e.output.acld[ij],NaN)) )(mz)
-    log(ea/ca)
+    eFc = TradeCuModel.interpolate_ascending(
+        coalesce.(e.output.ztop[ij],NaN), 
+        cumsum(coalesce.(e.output.acld[ij].*e.output.F_cld[icb,ij],NaN)) )(mz)
+    eFp = TradeCuModel.interpolate_ascending(
+        coalesce.(e.output.ztop[ij],NaN), 
+        cumsum(coalesce.(e.output.acld[ij].*e.output.F_pcp[icb,ij],NaN)) )(mz)
+    return eFc/cFc-1, eFp/cFp-1, ea/ca-1
 end
 
 # print readable table for E1 experiments
 open("cloud_frac_table.txt", "w") do io
     redirect_stdout(io) do
-        println("cloud fraction, % change from control")
-        println(@sprintf("%-15s | %10s", "experiment", "ΔC/C")) # interpolating to ztop
-        println("-"^30)
+        println("cloud fraction and fluxes, % change from control")
+        println(@sprintf("%-15s | %10s | %10s | %10s", "experiment", "ΔF_cld", "ΔF_pcp", "ΔC/C")) # interpolating to ztop
+        println("-"^60)
         for exp in ["subsidence-5%", "Ecb+2%", "q&qs+7%", "lclRH+0.003", "lclRH+0.006"]
-            println(@sprintf("%-15s | %10.2f", exp, 
-                100*(Base.exp(dlna_itp_ztop(   ExpDict[exp], ExpDict["control"]) )-1) ) )
+            println(@sprintf("%-15s | %10.2f | %10.2f | %10.2f", exp, 
+                (100 .* dcld_itp_ztop( ExpDict[exp], ExpDict["control"] ) )... ))
+        end
+        # println(@sprintf("%-15s | %10.2f | %10.2f | %10.2f", "x=0.630", 
+        #         (100 .* dcld_itp_ztop( PcpExpDict["x=0.630"], ExpDict["control"] ) )... ))
+        for exp in ["x=0.635"]
+            println(@sprintf("%-15s | %10.2f | %10.2f | %10.2f", exp, 
+                (100 .* dcld_itp_ztop( PcpExpDict[exp], PcpExpDict["x=0.630"] ) )... ))
         end
     end
 end

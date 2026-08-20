@@ -37,8 +37,11 @@ function init_context()
     ztop = 4.0e3           # m
     zcb = 700.0            # m
 
-    tot_sink = range(6.3523e-4, 5.7e-3, length=600)
-    dsink = tot_sink[2] - tot_sink[1]
+    # tot_sink = range(7e-4, 5.7e-3, length=600)
+    # exponentially spaced sink rates
+    tot_sink = 7e-4 * exp.(range(0, stop=log(5e-3/7e-4), length=600))
+    dsink = tot_sink[2] / tot_sink[1] # do not use!
+    # dsink = tot_sink[2] - tot_sink[1] # do not use!
 
     z, tam, _, qm, pm = get_mean_soundings()
     qs = qsat.(pm, tam .- KelvinCelsius)
@@ -80,7 +83,10 @@ function setup_experiments(; ctx::ModelContext)
 
     # ensemble of sink rates
     # reverse so that tot_sink decreases and ztop increases
-    tot_sink = reverse(range(6.3523e-4, 5.7e-3, length=600)) # min tuned for x=0.53 to get the highest possible cloud top
+    # tot_sink = reverse(range(6.3523e-4, 5.7e-3, length=600)) # min tuned for x=0.53 to get the highest possible cloud top
+    # exponentially spaced sink rates
+    tot_sink = reverse( 7e-4 * exp.(range(0, stop=log(5e-3/7e-4), length=600)) )
+
     dsink = ctx.dsink
     # tot_sink = (1 .+tanh.(range(-8*pi, 0, length=600))) .* (5e-3 - 1e-4) .+ 1e-4
     # tot_sink = range(6.1716e-4, 5.8e-3, length=600) # min tuned for x=0.53 to get the highest possible cloud top

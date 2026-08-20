@@ -1,8 +1,9 @@
-cloud fraction, % change from control
-experiment      |       ΔC/C
-------------------------------
-subsidence-5%   |      -5.00
-Ecb+2%          |      -5.00
-q&qs+7%         |      -7.80
-lclRH+0.003     |      -5.09
-lclRH+0.006     |      -2.24
+cloud fraction and fluxes, % change from control
+experiment      |     ΔF_cld |     ΔF_pcp |       ΔC/C
+------------------------------------------------------------
+subsidence-5%   |      -5.00 |      -5.00 |      -5.00
+Ecb+2%          |      -5.00 |      -5.00 |      -5.00
+q&qs+7%         |      -1.12 |      -0.65 |      -7.70
+lclRH+0.003     |      -0.90 |       0.96 |      -5.03
+lclRH+0.006     |      -0.62 |       2.66 |      -2.17
+x=0.635         |       0.16 |       1.84 |       0.62
