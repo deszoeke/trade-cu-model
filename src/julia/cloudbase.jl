@@ -301,8 +301,17 @@ dlnfcb_dlns = (diff(fcb.(s)[[1 end]][:])/0.055) / 0.05 # -3.2
 fcb([0.975, 1.025] .* s0)
 
 # sum up the shallow Cu and the LCL cloud CRE
-# assuming 2/3 shallow Cu and 1/3 LCL clouds
+# assuming fsc shallow Cu and LCL clouds
 ±(a,b) = a .+ [-b, b]
-dSWCRE = @. 2/3 * +1.55 ± 1/3 * 0.08 * +1.02/0.05
-dLWCRE = @. 2/3 * -0.27 ± 1/3 * 0.08 * -0.18/0.05
+fsc = 0.81
+SWCRE = -20.52 # W/m^2 from Zelinka kernel
+LWCRE =  +3.61
+dCsc_C = -0.077
+dCcb_C =  0.08
+dSWCRE = @. SWCRE * (fsc*dCsc_C ± (1-fsc)*dCcb_C)
+dLWCRE = @. LWCRE * (fsc*dCsc_C ± (1-fsc)*dCcb_C)
 dCRE = dSWCRE .+ dLWCRE
+
+
+#SW, LW low cloud radiative effects: -20.516432551858273, 3.606099777146592
+#SW, LW low cloud radiative effect change: 1.0258216275929137, -0.1803049888573296
