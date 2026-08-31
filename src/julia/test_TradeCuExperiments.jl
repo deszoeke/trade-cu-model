@@ -105,18 +105,17 @@ function moisture_flux_sum(VE::Vector{Experiment})
 end
 
 # table values
-sum(ExpDict["subsidence-5%"].output.M[icb,:]) / 
-sum(ExpDict["control"].output.M[icb,:]) - 1
-sum(ExpDict["q&qs+7%"].output.M[icb,:]) / 
-sum(ExpDict["control"].output.M[icb,:]) - 1
-sum(ExpDict["subsidence-5%"].output.acld .* ExpDict["subsidence-5%"].output.F_cld[icb,:]) / 
-sum(ExpDict["control"].output.acld .* ExpDict["control"].output.F_cld[icb,:]) - 1
-sum(ExpDict["q&qs+7%"].output.acld .* ExpDict["q&qs+7%"].output.F_cld[icb,:]) / 
-sum(ExpDict["control"].output.acld .* ExpDict["control"].output.F_cld[icb,:]) - 1
-sum(ExpDict["subsidence-5%"].output.acld .* ExpDict["subsidence-5%"].output.F_pcp[icb,:]) / 
-sum(ExpDict["control"].output.acld .* ExpDict["control"].output.F_pcp[icb,:]) - 1
-sum(ExpDict["q&qs+7%"].output.acld .* ExpDict["q&qs+7%"].output.F_pcp[icb,:]) / 
-sum(ExpDict["control"].output.acld .* ExpDict["control"].output.F_pcp[icb,:]) - 1
+# icb = searchsortedlast(ctx.z, ctx.zcb)
+# sum(skipmissing(ExpDict["subsidence-5%"].output.M[icb,:])) /
+# sum(skipmissing(ExpDict["control"].output.M[icb,:])) - 1
+# sum(skipmissing(ExpDict["subsidence-5%"].output.acld .* ExpDict["subsidence-5%"].output.F_cld[icb,:])) / 
+# sum(skipmissing(ExpDict["control"].output.acld .* ExpDict["control"].output.F_cld[icb,:])) - 1
+# sum(skipmissing(ExpDict["q&qs+7%"].output.acld .* ExpDict["q&qs+7%"].output.F_cld[icb,:])) / 
+# sum(skipmissing(ExpDict["control"].output.acld .* ExpDict["control"].output.F_cld[icb,:])) - 1
+# sum(skipmissing(ExpDict["subsidence-5%"].output.acld .* ExpDict["subsidence-5%"].output.F_pcp[icb,:])) / 
+# sum(skipmissing(ExpDict["control"].output.acld .* ExpDict["control"].output.F_pcp[icb,:])) - 1
+# sum(skipmissing(ExpDict["q&qs+7%"].output.acld .* ExpDict["q&qs+7%"].output.F_pcp[icb,:])) / 
+# sum(skipmissing(ExpDict["control"].output.acld .* ExpDict["control"].output.F_pcp[icb,:]))  - 1
 
 
 function getx(i; xx=xx)
@@ -124,9 +123,6 @@ function getx(i; xx=xx)
 end
 getxin(v::Symbol ,i) = getfield( getx(i).input , v )
 getxout(v::Symbol,i) = getfield( getx(i).output, v )
-
-good(x) = !ismissing(x) && isfinite(x)
-f0(x)::Float64 = good(x) ? x : 0.0
 
 a_pcpexp = let xx=xx, PcpExpDict=PcpExpDict, control=control
     tot_sink = control.input.tot_sink
@@ -140,19 +136,17 @@ a_pcpexp = let xx=xx, PcpExpDict=PcpExpDict, control=control
     end
     a_pcpexp
 end
-# precipitation dries like large-scale advection, opposing
+# precipitation dries (like large-scale advection), opposing
 # cloud updraft moisture flux, so higher precipitation efficiency
-# (more precipitation) requires more clouds.
-# WHY is precipitation and cloud moisture flux 
+# (more precipitation) requires more clouds to get the same total eddy moisture flux.
 
-icb = searchsortedlast(ctx.z, zcb) # cloud base
 tot_pcp = [sum(f0, a_pcpexp[:,i] .* getxout(:F_pcp, i)[icb,:]) for i in eachindex(xx)]
 tot_cld = [sum(f0, a_pcpexp[:,i] .* getxout(:F_cld, i)[icb,:]) for i in eachindex(xx)]
 round.(tot_pcp ./ tot_pcp[2]  .- 1, sigdigits=2)
 pcp_W_m2 = ctx.rhoL * tot_pcp
 # plot total precipitaiton vs. precipitation efficiency
 
-tot_pcp ./ tot_cld
+tot_pcp ./ tot_cld # ~-0.15
 
 slope(y,x) = cov(y, x) / var(x)
 slope(pcp_W_m2, xx) # -75 W/m^2 / x
@@ -390,7 +384,7 @@ open("cloud_frac_table.txt", "w") do io
         end
         # println(@sprintf("%-15s | %10.2f | %10.2f | %10.2f", "x=0.630", 
         #         (100 .* dcld_itp_ztop( PcpExpDict["x=0.630"], ExpDict["control"] ) )... ))
-        for exp in ["x=0.635"]
+        for exp in ["x=0.640"]
             println(@sprintf("%-15s | %10.2f | %10.2f | %10.2f", exp, 
                 (100 .* dcld_itp_ztop( PcpExpDict[exp], PcpExpDict["x=0.630"] ) )... ))
         end
