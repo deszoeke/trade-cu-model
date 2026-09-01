@@ -62,8 +62,14 @@ ctx, ExpDict, controlsink, sinkm5, sinkp5 = test_control_sink();
     rhoL, ns, nz ) = setup_experiments(ctx=ctx);
 
 control = ExpDict["control"]
+DIM = ExpDict["q&qs+7%"]
 SinkExpDict = define_sink_experiments(; ctx=ctx, control=control)
 PcpExpDict, xx  = define_pcp_experiments( ; ctx=ctx, control=control, xx=0.60:0.005:0.65)
+meso = define_experiment(DIM; name="DIM, x=0.64", 
+    description="x=0.64, q and qs +7%, E_cb+2%, subsidence-5%, RH=control",
+    x=0.64 )
+integrate_experiment!(meso; ctx=ctx)
+push!(ExpDict, "meso" => meso)
 
 good(x) = !ismissing(x) && isfinite(x)
 f0(x) = good(x) ? x : 0
@@ -378,7 +384,7 @@ open("cloud_frac_table.txt", "w") do io
         println("cloud fraction and fluxes, % change from control")
         println(@sprintf("%-15s | %10s | %10s | %10s", "experiment", "ΔF_cld", "ΔF_pcp", "ΔC/C")) # interpolating to ztop
         println("-"^60)
-        for exp in ["subsidence-5%", "Ecb+2%", "q&qs+7%", "lclRH+0.003", "lclRH+0.006"]
+        for exp in ["subsidence-5%", "Ecb+2%", "q&qs+7%", "lclRH+0.003", "lclRH+0.006", "meso"]
             println(@sprintf("%-15s | %10.2f | %10.2f | %10.2f", exp, 
                 (100 .* dcld_itp_ztop( ExpDict[exp], ExpDict["control"] ) )... ))
         end
