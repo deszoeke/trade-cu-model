@@ -19,3 +19,7 @@ __pycache__/
 *.pyc
 *.so *.dll *.dylib
 .JuliaFormatter.toml
+
+# secrets
+.env
+*.env
