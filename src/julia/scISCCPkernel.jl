@@ -1,14 +1,15 @@
-using Pkg; Pkg.activate(".")
+# using Pkg; Pkg.activate(".")
 using Revise
 using NCDatasets
+using DelimitedFiles
 using Statistics
 # using Interpolations
 using PythonPlot
 using Printf
 
 # Apply your global Arial font rules cleanly across the global scope
-rc("font", family="sans-serif")
-rc("font"; Symbol("sans-serif") => "Helvetica")
+PythonPlot.matplotlib.rcParams["font.sans-serif"] = ["Arial", "Helvetica"]
+PythonPlot.matplotlib.rcParams["font.family"] = "sans-serif"
 
 datadir = "../../../ATOMIC_GOES/data/"
 
@@ -264,6 +265,7 @@ else
     end
 end
 
+
 # now use kernels to compute CRE or feedbacks across the cloudy and clear histogram structures
 K_sw_cloudy, K_lw_cloudy = load_zelinka_kernel();
 
@@ -448,37 +450,59 @@ fbct_sw_cre_kernel = [
   4.31043  38.7438  80.809   125.422   154.941  173.838 ]
 fbct_sw_cre_histogram = -0.01*fbct_histogram.*fbct_sw_cre_kernel
 
+# CFMIP AMIP histogram
+amip = readdlm("amip.txt", '\t') # -> 1000 hPa row last
+amip_tau_edges = [0, 0.3, 1.3, 3.6, 9.4, 23, 60, 379]
+amip_press_edges = [1000.0, 800.0, 680.0, 560.0, 440.0, 310.0, 180.0, 10.0]
+
 # add the FBCT histogram to the plot
-fig, axs = subplots(2, 2, figsize=(8, 6))
+clf(); fig=gcf()
+# fig, axs = fig.subplots(3, 3, figsize=(8, 6))
+# share x only within a column (each column has its own tau bin edges/count),
+# so panels stay visually aligned on the grid without forcing identical tick labels
+axs = fig.subplots(3, 3; sharey=true)
+axs[0,0].sharex(axs[1,0])
+axs[0,1].sharex(axs[1,1])
 axs[0,0].invert_yaxis() # Invert y-axis to have higher pressures at the bottom
 axs[0,1].invert_yaxis() # Invert y-axis to have higher pressures at the
+axs[0,2].invert_yaxis() # Invert y-axis to have higher pressures at the
 axs[1,0].invert_yaxis() # Invert y-axis to have higher pressures at the
 axs[1,1].invert_yaxis() # Invert y-axis to have higher pressures at the
 pclf, cb1 = plot_isccp_matrix(axs[0,0], reverse(ich, dims=1), tau_edges, reverse(pc_edges),
     cmap=ColorMap("Blues").resampled(10))
 pcre, cb2 = plot_isccp_matrix(axs[1,0], reverse(sw_cre_hist, dims=1), tau_edges, reverse(pc_edges),
     cmap=ColorMap("Blues_r").resampled(10))
+pami, cb5 = plot_isccp_matrix(axs[0,2], reverse(amip, dims=1), amip_tau_edges, reverse(amip_press_edges),
+    cmap=ColorMap("Blues").resampled(10))
 pfbc, cb3 = plot_isccp_matrix(axs[0,1], reverse(fbct_histogram, dims=1), fbct_od, reverse(fbct_press),
     cmap=ColorMap("Blues").resampled(10))
 pfsw, cb4 = plot_isccp_matrix(axs[1,1], reverse(fbct_sw_cre_histogram, dims=1), fbct_od, reverse(fbct_press),
     cmap=ColorMap("Blues_r").resampled(10))
 
 axs[0,0].set_title("GOES cloud fraction (%)")
-axs[1,0].set_title("GOES SW CRE (W m⁻²)")
-axs[1,1].set_title("CERES FBCT SW CRE (W m⁻²)")
+axs[1,0].set_title("GOES SW CRE (W m\$^{-2}\$)")
+axs[1,1].set_title("CERES FBCT SW CRE (W m\$^{-2}\$)")
+axs[0,2].set_title("CFMIP AMIP preindustrial cloud fraction (%)")
 axs[0,1].set_title("CERES FBCT cloud fraction (%)")
 axs[0,1].set_ylabel(nothing)
 axs[0,1].set_xlabel(nothing)
+axs[1,1].set_ylabel(nothing)
 axs[0,0].set_xlabel(nothing)
+axs[0,2].set_ylabel(nothing)
 [ ax.set_aspect(0.8) for ax in axs.flatten() ]  # Ensure equal aspect ratio for all subplots
 
 # panel labels
 axs[0,0].text(6.4, 0.6, "a", size=12)
-axs[1,0].text(6.4, 0.6, "c", size=12)
+axs[1,0].text(6.4, 0.6, "d", size=12)
 axs[0,1].text(5.4, 0.6, "b", size=12)
-axs[1,1].text(5.4, 0.6, "d", size=12)
+axs[1,1].text(5.4, 0.6, "e", size=12)
+axs[0,2].text(6.4, 0.6, "c", size=12)
 
+axs[2,0].axis("off")
+axs[2,1].axis("off")
+axs[2,2].axis("off")
+axs[1,2].axis("off")
 tight_layout()
 display(fig)
 
-#[ fig.savefig("goes_and_fbct_cloud_and_cre_histograms.$fmt") for fmt in ["png", "svg", "pdf"] ]
+[ fig.savefig("goes_and_fbct_cloud_and_cre_histograms.$fmt") for fmt in ["png", "eps", "svg", "pdf"] ]

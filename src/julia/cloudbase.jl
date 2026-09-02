@@ -2,8 +2,8 @@
 using Revise
 using Pkg
 # Pkg.activate(joinpath(homedir(), "Projects/ATOMIC/ATOMIC_GOES/julia/ATOMIC_GOES"))
-cd("/Users/deszoeks/Projects/ATOMIC/trade-cu-model/src/julia")
-Pkg.activate(".")
+# cd("/Users/deszoeks/Projects/ATOMIC/trade-cu-model/src/julia")
+# Pkg.activate(".")
 
 using Printf, Dates, NCDatasets, JLD2
 using Statistics, SpecialFunctions, Interpolations, LinearAlgebra
@@ -17,13 +17,47 @@ using .TradeCuModel
 using NaNStatistics
 using Missings
 
+# facilitate and customize plots
+if @isdefined(PythonPlot) && @isdefined(PythonCall)
+    "Convert arrays with missing to numpy masked arrays without overriding global conversion."
+    function as_masked_array(a::AbstractArray{Union{T,Missing},N}) where {T<:Real,N}
+        np = PythonCall.pyimport("numpy")
+        np.ma.array(coalesce.(a, NaN), mask=ismissing.(a))
+    end
+
+    "close plots with close(\"all\")"
+    close(x) = PythonCall.pyimport("matplotlib.pyplot").close(x)
+elseif @isdefined(PyPlot) && @isdefined(PyCall)
+    # using PyCall: PyObject
+    # allow for plotting with missing values
+    function PyCall.PyObject(a::Array{Union{T,Missing},N}) where {T,N}
+        numpy_ma = PyCall.pyimport("numpy").ma
+        pycall(numpy_ma.array, Any, coalesce.(a,zero(T)), mask=ismissing.(a))
+    end
+end
+
+# set up plot defaults
+PythonPlot.matplotlib.rcParams["font.family"] = "sans-serif"
+PythonPlot.matplotlib.rcParams["font.sans-serif"] = ["Helvetica", "Arial", "OpenSans"]
+# make fonts bigger by mutating rcParams
+fsz = 12
+font_settings = Dict(
+    "font.size" => fsz,         # Base size
+    "axes.titlesize" =>fsz+2,   # Subplot titles
+    "axes.labelsize" => fsz+2,  # X/Y labels
+    "xtick.labelsize" => fsz,   # X-axis numbers
+    "ytick.labelsize" => fsz,   # Y-axis numbers
+    "legend.fontsize" => fsz    # Legend text
+)
+matplotlib.rcParams.update(font_settings)
+
 # parameters and initialization
 KelvinCelsius=273.15 # K
 zi   = 4.0e3    # m
 ztop = 4.0e3
 zcb  = 700      # m
 divg = 1.5e-6   # 1/s
-x = 0.53 # parameter precipitation efficiency
+x = 0.63 # parameter precipitation efficiency
 
 # ensemble of sink rates
 ns = 600 # number of sink rates
@@ -263,8 +297,6 @@ text(0.01, 0.01, "–0.5", fontsize=10, horizontalalignment="left")
 text(0.8, 0.5, "0", fontsize=10, verticalalignment="center", horizontalalignment="left")
 # colorbar()
 tight_layout()
-[ savefig("cloudbase_cloudfrac_sensitivity.$f") for f in ["png", "pdf", "svg", "eps"] ]
-
 
 # redo signs with +5% = dlnQ - dlnE
 p(b,c) = (b-0.5)*(c-1)
@@ -305,8 +337,8 @@ fcb([0.975, 1.025] .* s0)
 ±(a,b) = a .+ [-b, b]
 fsc = 0.81
 SWCRE = -20.52 # W/m^2 from Zelinka kernel
-LWCRE =  +3.61
-dCsc_C = -0.077
+LWCRE =  +3.61 #
+dCsc_C = -0.077 # relative change
 dCcb_C =  0.08
 dSWCRE = @. SWCRE * (fsc*dCsc_C ± (1-fsc)*dCcb_C)
 dLWCRE = @. LWCRE * (fsc*dCsc_C ± (1-fsc)*dCcb_C)
