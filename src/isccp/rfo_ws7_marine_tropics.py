@@ -28,8 +28,7 @@ CRE_FILE = "./ws7_cre_by_month_lat.nc"  # from ws7_kernel.py: SW/LW kernel x WS7
 WS7_CENTROID = 7          # shallow cumulus weather state
 LAT_LIMIT = 40.0          # deg, equatorward of this latitude counts toward RFO
 WRAP_LON = 30.0           # deg E, map seam / wrap longitude for the egg plot
-MAP_FILE = "ws7_rfo_annual_climatology_egg.png"
-SWCRE_MAP_FILE = "ws7_swcre_annual_climatology_egg.png"
+PANEL_MAP_FILE = "ws7_annual_climatology_panels.png"
 
 MONTH_NAMES = [
     "January", "February", "March", "April", "May", "June",
@@ -70,21 +69,13 @@ def global_area_weighted_rfo(pixel_rfo, valid, area_weight_global, dims=("longit
     return numerator / denominator
 
 
-def plot_egg_map(field, lon, lat, out_file, vmin, vmax, title, cmap="Blues_r"):
+def _draw_egg_panel(ax, field, lon, lat, vmin, vmax, cmap):
     """
-    Proportional-area (Mollweide, "egg") map of a record (annual) average
-    field over ALL ocean pixels (full globe, not restricted to |lat| <=
-    LAT_LIMIT), wrapped at WRAP_LON so the map seam falls at that meridian
-    instead of the antimeridian. Land pixels (NaN in `field`) are filled
-    black.
+    Draw one proportional-area (Mollweide, "egg") panel of a record (annual)
+    average field over ALL ocean pixels (full globe, not restricted to
+    |lat| <= LAT_LIMIT), onto an existing GeoAxes. Land pixels (NaN in
+    `field`) are filled black; dashed lines mark +/- LAT_LIMIT.
     """
-    # Mollweide wraps at central_longitude +/- 180, so put the seam at
-    # WRAP_LON by centering the map on WRAP_LON - 180.
-    central_longitude = WRAP_LON - 180.0
-    proj = ccrs.Mollweide(central_longitude=central_longitude)
-
-    fig = plt.figure(figsize=(11, 6))
-    ax = plt.axes(projection=proj)
     ax.set_global()
 
     cmap = plt.get_cmap(cmap, lut=20).copy()
@@ -112,13 +103,35 @@ def plot_egg_map(field, lon, lat, out_file, vmin, vmax, title, cmap="Blues_r"):
             transform=ccrs.PlateCarree(),
             color="k", linestyle="--", linewidth=1, zorder=2,
         )
+    return mesh
 
-    cb = plt.colorbar(mesh, ax=ax, orientation="horizontal", pad=0.06, shrink=0.7)
-    ax.set_title(title)
+
+def plot_climatology_panels(panels, lon, lat, out_file=PANEL_MAP_FILE):
+    """
+    2x2 grid of egg maps, one per (field, vmin, vmax, cmap, label, title,
+    cbar_label) entry in `panels`, labeled a/b/c/d at the top-left of each
+    panel's title.
+    """
+    central_longitude = WRAP_LON - 180.0
+    proj = ccrs.Mollweide(central_longitude=central_longitude)
+
+    fig, axes = plt.subplots(
+        nrows=2, ncols=2, figsize=(14, 9),
+        subplot_kw={"projection": proj},
+    )
+
+    for ax, panel in zip(axes.flat, panels):
+        mesh = _draw_egg_panel(
+            ax, panel["field"], lon, lat,
+            vmin=panel["vmin"], vmax=panel["vmax"], cmap=panel["cmap"],
+        )
+        ax.set_title(f"{panel['label']}) {panel['title']}", loc="left")
+        cb = plt.colorbar(mesh, ax=ax, orientation="horizontal", pad=0.06, shrink=0.8)
+        cb.set_label(panel["cbar_label"])
 
     fig.savefig(out_file, dpi=150, bbox_inches="tight")
-    print(f"Saved annual climatology map to {out_file}")
-    return fig, ax
+    print(f"Saved annual climatology panel plot to {out_file}")
+    return fig, axes
 
 
 def main():
@@ -198,18 +211,29 @@ def main():
     valid_ocean = ocean_mask & (total_valid_total > 0)
 
     annual_rfo_field = pixel_rfo_total.where(valid_ocean)
-    plot_egg_map(
-        annual_rfo_field, ds.longitude, ds.latitude, out_file=MAP_FILE,
-        vmin=0, vmax=1, cmap="Blues_r",
-        title="ISCCP-H shallow cumulus regime (WS7) frequency of occurrence",
-    )
-
     annual_swcre_field = pixel_swcre_total.where(valid_ocean)
-    plot_egg_map(
-        annual_swcre_field, ds.longitude, ds.latitude, out_file=SWCRE_MAP_FILE,
-        vmin=-40, vmax=0, cmap="Blues_r",
-        title="Record average SW cloud radiative effect from WS7 (shallow cumulus), W m$^{-2}$",
-    )
+    annual_lwcre_field = pixel_lwcre_total.where(valid_ocean)
+    annual_netcre_field = annual_swcre_field + annual_lwcre_field
+
+    panels = [
+        dict(
+            field=annual_rfo_field, vmin=0, vmax=1, cmap="Blues_r",
+            label="a", title="RFO of WS7 (shallow cumulus)", cbar_label="fraction",
+        ),
+        dict(
+            field=annual_netcre_field, vmin=-35, vmax=0, cmap="Blues_r",
+            label="b", title="Net CRE from WS7", cbar_label="W m$^{-2}$",
+        ),
+        dict(
+            field=annual_swcre_field, vmin=-40, vmax=0, cmap="Blues_r",
+            label="c", title="SW CRE from WS7", cbar_label="W m$^{-2}$",
+        ),
+        dict(
+            field=annual_lwcre_field, vmin=0, vmax=10, cmap="Reds",
+            label="d", title="LW CRE from WS7", cbar_label="W m$^{-2}$",
+        ),
+    ]
+    plot_climatology_panels(panels, ds.longitude, ds.latitude)
 
     return monthly_rfo, overall_rfo, monthly_swcre, monthly_lwcre, overall_swcre, overall_lwcre
 
