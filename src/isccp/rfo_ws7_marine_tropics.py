@@ -29,6 +29,7 @@ WS7_CENTROID = 7          # shallow cumulus weather state
 LAT_LIMIT = 40.0          # deg, equatorward of this latitude counts toward RFO
 WRAP_LON = 30.0           # deg E, map seam / wrap longitude for the egg plot
 MAP_FILE = "ws7_rfo_annual_climatology_egg.png"
+SWCRE_MAP_FILE = "ws7_swcre_annual_climatology_egg.png"
 
 MONTH_NAMES = [
     "January", "February", "March", "April", "May", "June",
@@ -69,10 +70,10 @@ def global_area_weighted_rfo(pixel_rfo, valid, area_weight_global, dims=("longit
     return numerator / denominator
 
 
-def plot_annual_climatology(field, lon, lat, out_file=MAP_FILE):
+def plot_egg_map(field, lon, lat, out_file, vmin, vmax, title, cmap="Blues_r"):
     """
-    Proportional-area (Mollweide, "egg") map of the record (annual) average
-    RFO field over ALL ocean pixels (full globe, not restricted to |lat| <=
+    Proportional-area (Mollweide, "egg") map of a record (annual) average
+    field over ALL ocean pixels (full globe, not restricted to |lat| <=
     LAT_LIMIT), wrapped at WRAP_LON so the map seam falls at that meridian
     instead of the antimeridian. Land pixels (NaN in `field`) are filled
     black.
@@ -86,13 +87,13 @@ def plot_annual_climatology(field, lon, lat, out_file=MAP_FILE):
     ax = plt.axes(projection=proj)
     ax.set_global()
 
-    cmap = plt.get_cmap("Blues_r", lut=20).copy()
+    cmap = plt.get_cmap(cmap, lut=20).copy()
 
     data = field.transpose("latitude", "longitude")
     mesh = ax.pcolormesh(
         lon, lat, data,
         transform=ccrs.PlateCarree(),
-        cmap=cmap, vmin=0, vmax=1, shading="auto",
+        cmap=cmap, vmin=vmin, vmax=vmax, shading="auto",
         zorder=0,
     )
 
@@ -103,7 +104,7 @@ def plot_annual_climatology(field, lon, lat, out_file=MAP_FILE):
     # still get painted over. Covering land afterward hides that smearing.
     ax.add_feature(cfeature.LAND, facecolor="black", edgecolor="k", linewidth=0.5, zorder=1)
 
-    # Reference lines at the +/- LAT_LIMIT latitudes used for the RFO stats.
+    # Reference lines at the +/- LAT_LIMIT latitudes used for the RFO/CRE stats.
     line_lons = np.linspace(-180, 180, 361)
     for lat_val in (-LAT_LIMIT, LAT_LIMIT):
         ax.plot(
@@ -113,8 +114,7 @@ def plot_annual_climatology(field, lon, lat, out_file=MAP_FILE):
         )
 
     cb = plt.colorbar(mesh, ax=ax, orientation="horizontal", pad=0.06, shrink=0.7)
-    # cb.set_label("")
-    ax.set_title("ISCCP-H shallow cumulus regime (WS7) frequency of occurrence")
+    ax.set_title(title)
 
     fig.savefig(out_file, dpi=150, bbox_inches="tight")
     print(f"Saved annual climatology map to {out_file}")
@@ -192,12 +192,24 @@ def main():
     sw_tot, lw_tot = float(overall_swcre), float(overall_lwcre)
     print(f"  {'Total record':<10s}  {sw_tot:12.4f}  {lw_tot:12.4f}  {sw_tot + lw_tot:12.4f}")
 
-    # Record (annual) average climatology map: show all ocean pixels globally
+    # Record (annual) average climatology maps: show all ocean pixels globally
     # (not restricted to |lat| <= LAT_LIMIT), with land set to NaN so it plots
-    # black. The printed RFO statistics above remain equatorward of 40 deg.
+    # black. The printed RFO/CRE statistics above remain equatorward of 40 deg.
     valid_ocean = ocean_mask & (total_valid_total > 0)
-    annual_field = pixel_rfo_total.where(valid_ocean)
-    plot_annual_climatology(annual_field, ds.longitude, ds.latitude)
+
+    annual_rfo_field = pixel_rfo_total.where(valid_ocean)
+    plot_egg_map(
+        annual_rfo_field, ds.longitude, ds.latitude, out_file=MAP_FILE,
+        vmin=0, vmax=1, cmap="Blues_r",
+        title="ISCCP-H shallow cumulus regime (WS7) frequency of occurrence",
+    )
+
+    annual_swcre_field = pixel_swcre_total.where(valid_ocean)
+    plot_egg_map(
+        annual_swcre_field, ds.longitude, ds.latitude, out_file=SWCRE_MAP_FILE,
+        vmin=-40, vmax=0, cmap="Blues_r",
+        title="Record average SW cloud radiative effect from WS7 (shallow cumulus), W m$^{-2}$",
+    )
 
     return monthly_rfo, overall_rfo, monthly_swcre, monthly_lwcre, overall_swcre, overall_lwcre
 
