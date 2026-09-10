@@ -285,4 +285,4 @@ plot(cumsum(reverse(reflec_profile)), reverse(height_bins)/1e3, label="reflectan
 plot(0.1*cumsum(reverse(cloud_profile)), reverse(height_bins)/1e3, label="0.1x cloud fraction")
 xlabel("cumulative cloud amount")
 xlim([-0.0005, 0.2]); ylim([0, 4])
-[ savefig(joinpath(datadir, "shcu_cloud_albedo_refl_profile.$f")) for f in ["png", "pdf", "svg", "eps" ] ]
+# [ savefig(joinpath(datadir, "shcu_cloud_albedo_refl_profile.$f")) for f in ["png", "pdf", "svg", "eps" ] ]
