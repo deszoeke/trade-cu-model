@@ -215,6 +215,7 @@ def main():
     annual_lwcre_field = pixel_lwcre_total.where(valid_ocean)
     annual_netcre_field = annual_swcre_field + annual_lwcre_field
 
+    net_tot = sw_tot + lw_tot
     panels = [
         dict(
             field=annual_rfo_field, vmin=0, vmax=1, cmap="Blues_r",
@@ -222,15 +223,15 @@ def main():
         ),
         dict(
             field=annual_netcre_field, vmin=-35, vmax=0, cmap="Blues_r",
-            label="b", title="net CRE from shallow cumulus", cbar_label="W m$^{-2}$",
+            label="b", title=f"net CRE from shallow cumulus ({net_tot:.2f} W m$^{{-2}}$)", cbar_label="W m$^{-2}$",
         ),
         dict(
             field=annual_swcre_field, vmin=-40, vmax=0, cmap="Blues_r",
-            label="c", title="SW CRE from shallow cumulus", cbar_label="W m$^{-2}$",
+            label="c", title=f"SW CRE from shallow cumulus ({sw_tot:.2f} W m$^{{-2}}$)", cbar_label="W m$^{-2}$",
         ),
         dict(
             field=annual_lwcre_field, vmin=0, vmax=10, cmap="Reds",
-            label="d", title="LW CRE from shallow cumulus", cbar_label="W m$^{-2}$",
+            label="d", title=f"LW CRE from shallow cumulus ({lw_tot:.2f} W m$^{{-2}}$)", cbar_label="W m$^{-2}$",
         ),
     ]
     plot_climatology_panels(panels, ds.longitude, ds.latitude)
