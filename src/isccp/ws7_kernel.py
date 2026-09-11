@@ -59,16 +59,23 @@ lats = kernel.lat.values  # kernel's native 2.5 deg grid (-88.75..88.75)
 sw_by_month_lat = np.full((len(months), len(lats)), np.nan)
 lw_by_month_lat = np.full((len(months), len(lats)), np.nan)
 
+# interpolate the kernel to clear sky albedo of 0.086
+alb = 0.086
+wgts = np.array([alb, 1.0-alb, 0])/0.5 # alb <= 0.5
+
 for mi, month in enumerate(months):
     for li, lat in enumerate(lats):
         kernel_sw = kernel['SWkernel'].sel(time=month, lat=lat).values  # (tau, plev, albcs)
         kernel_lw = kernel['LWkernel'].sel(time=month, lat=lat).values  # (tau, plev)
 
         # Surface albedo (albcs=0, 0.5, 1.0): use albcs=0 (dark/clear ocean).
-        kernel_sw_alb0 = kernel_sw[:, :, 0]  # (tau, plev)
+        # kernel_sw_alb0 = kernel_sw[:, :, 0]  # (tau, plev)
+        # inner product of weights and kernel along the albcs axis (axis=-1) interpolates
+        kernel_sw_alb = np.tensordot(wgts, kernel_sw, axes=([-1], [-1]))  # (tau, plev)
+        # kernel_sw_alb = interp_along_axis([0.086], [0, 0.5, 1.0], kernel_sw, axis=-1)[..., 0]
 
         # multiply the pc-tau histogram by the kernel
-        sw_kernel_weighted = ws7_hist * kernel_sw_alb0
+        sw_kernel_weighted = ws7_hist * kernel_sw_alb
         lw_kernel_weighted = ws7_hist * kernel_lw
 
         # sum over the pc-tau bins to get the total SW and LW kernels for this month and latitude
