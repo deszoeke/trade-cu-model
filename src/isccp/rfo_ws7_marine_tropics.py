@@ -218,19 +218,19 @@ def main():
     panels = [
         dict(
             field=annual_rfo_field, vmin=0, vmax=1, cmap="Blues_r",
-            label="a", title="RFO of WS7 (shallow cumulus)", cbar_label="fraction",
+            label="a", title="relative frequency of occurence of shallow cumulus (WS7)", cbar_label="RFO",
         ),
         dict(
             field=annual_netcre_field, vmin=-35, vmax=0, cmap="Blues_r",
-            label="b", title="Net CRE from WS7", cbar_label="W m$^{-2}$",
+            label="b", title="net CRE from shallow cumulus", cbar_label="W m$^{-2}$",
         ),
         dict(
             field=annual_swcre_field, vmin=-40, vmax=0, cmap="Blues_r",
-            label="c", title="SW CRE from WS7", cbar_label="W m$^{-2}$",
+            label="c", title="SW CRE from shallow cumulus", cbar_label="W m$^{-2}$",
         ),
         dict(
             field=annual_lwcre_field, vmin=0, vmax=10, cmap="Reds",
-            label="d", title="LW CRE from WS7", cbar_label="W m$^{-2}$",
+            label="d", title="LW CRE from shallow cumulus", cbar_label="W m$^{-2}$",
         ),
     ]
     plot_climatology_panels(panels, ds.longitude, ds.latitude)

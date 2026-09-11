@@ -5,7 +5,8 @@ import numpy as np
 # calculate SW and LW kernels by multiplying the pc-tau 
 # histogram by the zelinka pc-tau histogram kernel for each latitude and month.
 
-kernelfile = "/home/deszoeks/projects/ATOMIC/cloud-radiative-kernels/data/obs_cloud_kernels4.nc"
+# kernelfile = "/home/deszoeks/projects/ATOMIC/cloud-radiative-kernels/data/obs_cloud_kernels4.nc"
+kernelfile = "../../../cloud-radiative-kernels/data/obs_cloud_kernels4.nc"
 kernel = xr.open_dataset(kernelfile)
 # kernel has dims (time=12, tau=7, plev=7, lat=72[, albcs=3 for SW only]);
 # variables are 'SWkernel' and 'LWkernel' (not 'sw_kernel'/'lw_kernel')
