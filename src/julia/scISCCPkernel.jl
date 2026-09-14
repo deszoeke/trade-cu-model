@@ -472,7 +472,7 @@ pclf, cb1 = plot_isccp_matrix(axs[0,0], reverse(ich, dims=1), tau_edges, reverse
     cmap=ColorMap("Blues").resampled(10))
 pcre, cb2 = plot_isccp_matrix(axs[1,0], reverse(sw_cre_hist, dims=1), tau_edges, reverse(pc_edges),
     cmap=ColorMap("Blues_r").resampled(10))
-pami, cb5 = plot_isccp_matrix(axs[0,2], reverse(amip, dims=1), amip_tau_edges, reverse(amip_press_edges),
+pami, cb5 = plot_isccp_matrix(axs[0,2], amip, amip_tau_edges, reverse(amip_press_edges),
     cmap=ColorMap("Blues").resampled(10))
 pfbc, cb3 = plot_isccp_matrix(axs[0,1], reverse(fbct_histogram, dims=1), fbct_od, reverse(fbct_press),
     cmap=ColorMap("Blues").resampled(10))
@@ -482,7 +482,7 @@ pfsw, cb4 = plot_isccp_matrix(axs[1,1], reverse(fbct_sw_cre_histogram, dims=1), 
 axs[0,0].set_title("GOES cloud fraction (%)")
 axs[1,0].set_title("GOES SW CRE (W m\$^{-2}\$)")
 axs[1,1].set_title("CERES FBCT SW CRE (W m\$^{-2}\$)")
-axs[0,2].set_title("CFMIP AMIP preindustrial cloud fraction (%)")
+axs[0,2].set_title("CFMIP AMIP 2003-2014 cloud fraction (%)")
 axs[0,1].set_title("CERES FBCT cloud fraction (%)")
 axs[0,1].set_ylabel(nothing)
 axs[0,1].set_xlabel(nothing)
