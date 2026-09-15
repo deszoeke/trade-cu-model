@@ -160,7 +160,7 @@ function compile_isccp_histogram(lat_bounds, lon_bounds, data_file_list)
     #pc_edges  = [10.0, 180.0, 310.0, 440.0, 560.0, 680.0, 800.0, 1000.0]
     # Zelinka kernel bin edges:
     tau_edges = [0.01, 0.3, 1.3, 3.6, 9.4, 23, 60, 380]
-    pc_edges = reverse(float([1000, 800, 680, 560, 440, 310, 180, 50])) 
+    pc_edges = reverse(float([1000, 800, 680, 560, 440, 310, 180, 50]))
     # ! pc_edges are reversed relative to Zelinka kernel !
 
     # --- PREALLOCATE ACCUMULATORS ---
@@ -196,9 +196,9 @@ tau_bnds = [0.01  0.3  1.3  3.6  9.4  23.0  60.0  380.0]
 """
 function load_zelinka_kernel( kernel_file=joinpath(datadir, "obs_cloud_kernels4.nc") )
     NCDatasets.Dataset(kernel_file, "r") do kd
-    K_sw_cloudy = kd["SWkernel"][:,:,:,:,:] # -> (albcs, lat, plev, tau, time)
-    K_lw_cloudy = kd["LWkernel"][:,:,:,:]
-    return (K_sw_cloudy, K_lw_cloudy)
+        K_sw_cloudy = kd["SWkernel"][:,:,:,:,:] # -> (albcs, lat, plev, tau, time)
+        K_lw_cloudy = kd["LWkernel"][:,:,:,:]
+        return (K_sw_cloudy, K_lw_cloudy)
     end
 end
 # lowest 2 cloud levels are indexed plev[1:2], height incresing, plev is decreasing
@@ -273,13 +273,30 @@ K_sw_cloudy, K_lw_cloudy = load_zelinka_kernel();
 # SW(time, tau, plev, lat, albcs) 
 # netcdf structure reverses to (albcs, lat, plev, tau, time) in julia
 ll = 42:43  # searchsortedfirst(lat,12.0):searchsortedlast(lat,16.5) # lat range for EUREC4A
-aa = 1   # searchsortedlast(albcs,0.05) # clear sky albedo approx 0
 tt = 1:2
+
+# interpolate to mean clear sky albedo approx
+# aa = 1
+albedo_clear = 0.086
+albcs = 0:0.5:1
+"weights for linear interpolation between the two nearest albedo bins"
+function weight_albedo(albcs, albedo_clear)
+    i = searchsortedlast(albcs, albedo_clear)
+    a0, a1 = albcs[i], albcs[i+1]
+    w = (albedo_clear - a0) / (a1 - a0)
+    return i, w
+end
+
+# interpolate the kernel to the mean clear sky albedo
+aa, w = weight_albedo(albcs, albedo_clear)
+# interpolate the kernel to the mean clear sky albedo
+K_sw_albedo = (1-w) .* K_sw_cloudy[aa, ll, :,:, tt] .+ w .* K_sw_cloudy[aa+1, ll, :,:, tt] # lat x plev x tau x time
 # K_sw_sc_cloudy = mean(K_sw_cloudy[tt,:,:,ll,aa], dims=(1,4)) |> dropdims
 # K_lw_sc_cloudy = mean(K_lw_cloudy[tt,:,:,ll   ], dims=(1,4)) |> dropdims
-K_sw_sc_cloudy = mean(K_sw_cloudy[aa, ll, :,:, tt], dims=(1,4))[1,:,:,1] # plev x tau
-K_lw_sc_cloudy = mean(K_lw_cloudy[    ll, :,:, tt], dims=(1,4))[1,:,:,1]
-# scale kernel bins by observed cloud fractions
+# K_sw_sc_cloudy = mean(K_sw_cloudy[aa, ll, :,:, tt], dims=(1,4))[1,:,:,1] # plev x tau # wrong dims for mean!!
+K_sw_sc_cloudy = mean(K_sw_albedo             , dims=(1,4))[1,:,:,1] # avg over lat and time, keep plev x tau
+K_lw_sc_cloudy = mean(K_lw_cloudy[ll, :,:, tt], dims=(1,4))[1,:,:,1]
+# scale kernel bins by observed cloud fractions - Isccp Cloud Histogram
 ich = coalesce.(reverse(isccp_cloudy_histogram_pct, dims=1), NaN)
 sw_cre_hist = ich .* K_sw_sc_cloudy
 lw_cre_hist = ich .* K_lw_sc_cloudy
@@ -290,6 +307,12 @@ sw_low_cre, lw_low_cre = sum(sw_cre_hist[1:2, :]), sum(lw_cre_hist[1:2, :]) # W/
 
 # compute Delta CRE W/m^2/K for +5 % decrease in lowest 2 cloud levels 
 dR_sw_ShCu, dR_lw_ShCu = -0.05 .* (sw_low_cre, lw_low_cre)
+rel_sc_delta = [ -5.00, -7.70, -5.03, +0.88, -6.88 ] # from table 1
+dR_sw_ShCu = rel_sc_delta/100 * sw_low_cre
+dR_lw_ShCu = rel_sc_delta/100 * lw_low_cre
+
+# print out aligned ΔCRE computed from GOES EUREC4A-region 2020 clouds
+(x -> @sprintf("%+04.2f", x)).([dR_sw_ShCu dR_lw_ShCu dR_sw_ShCu.+dR_lw_ShCu])
 
 # plots
 tau_edges = [0.01, 0.3, 1.3, 3.6, 9.4, 23, 60, 380]
@@ -457,6 +480,7 @@ amip_press_edges = [1000.0, 800.0, 680.0, 560.0, 440.0, 310.0, 180.0, 10.0]
 
 # add the FBCT histogram to the plot
 clf(); fig=gcf()
+fig.set_size_inches(8, 6)
 # fig, axs = fig.subplots(3, 3, figsize=(8, 6))
 # share x only within a column (each column has its own tau bin edges/count),
 # so panels stay visually aligned on the grid without forcing identical tick labels
@@ -479,11 +503,11 @@ pfbc, cb3 = plot_isccp_matrix(axs[0,1], reverse(fbct_histogram, dims=1), fbct_od
 pfsw, cb4 = plot_isccp_matrix(axs[1,1], reverse(fbct_sw_cre_histogram, dims=1), fbct_od, reverse(fbct_press),
     cmap=ColorMap("Blues_r").resampled(10))
 
-axs[0,0].set_title("GOES cloud fraction (%)")
-axs[1,0].set_title("GOES SW CRE (W m\$^{-2}\$)")
-axs[1,1].set_title("CERES FBCT SW CRE (W m\$^{-2}\$)")
-axs[0,2].set_title("CFMIP AMIP 2003-2014 cloud fraction (%)")
-axs[0,1].set_title("CERES FBCT cloud fraction (%)")
+axs[0,0].set_title("GOES\ncloud fraction (%)")
+axs[1,0].set_title("SW CRE (W m\$^{-2}\$)")
+axs[1,1].set_title("SW CRE (W m\$^{-2}\$)")
+axs[0,2].set_title("CFMIP AMIP 2003-2014\ncloud fraction (%)")
+axs[0,1].set_title("CERES FBCT\ncloud fraction (%)")
 axs[0,1].set_ylabel(nothing)
 axs[0,1].set_xlabel(nothing)
 axs[1,1].set_ylabel(nothing)
