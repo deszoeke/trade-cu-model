@@ -313,6 +313,9 @@ dR_lw_ShCu = rel_sc_delta/100 * lw_low_cre
 
 # print out aligned ΔCRE computed from GOES EUREC4A-region 2020 clouds
 (x -> @sprintf("%+04.2f", x)).([dR_sw_ShCu dR_lw_ShCu dR_sw_ShCu.+dR_lw_ShCu])
+# scale these to a global-mean CRE by multiplying by the fraction of the globe covered by tropical low clouds (0.20)
+global_frac_of_tropical_sc = 0.20
+(x -> @sprintf("%+04.2f", x)).(global_frac_of_tropical_sc * [dR_sw_ShCu dR_lw_ShCu dR_sw_ShCu.+dR_lw_ShCu])
 
 # plots
 tau_edges = [0.01, 0.3, 1.3, 3.6, 9.4, 23, 60, 380]
